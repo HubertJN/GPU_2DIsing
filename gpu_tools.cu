@@ -27,7 +27,7 @@ void gpuInit(int deviceIndex){
         fprintf(stderr,"No CUDA supported devices are available in this system.\n");
         exit(EXIT_FAILURE);
     } else {
-        fprintf(stderr,"Found %d CUDA devices in this system\n",count);
+        //fprintf(stderr,"Found %d CUDA devices in this system\n",count);
     }
 
 
@@ -46,6 +46,7 @@ void gpuInit(int deviceIndex){
         // us the name of the CUDA device. Other members of this
         // struct tell us the clock speed and compute capability
         // of the device.
+        /*
         fprintf(stderr,"Device %d : %s\n",idev,prop.name);
         fprintf(stderr,"================================\n");
         fprintf(stderr,"Number of SMs       : %d\n",prop.multiProcessorCount);
@@ -53,7 +54,7 @@ void gpuInit(int deviceIndex){
         //fprintf(stderr,"Warp size           : %d\n",prop.warpSize);
         //fprintf(stderr,"Global DRAM         : %ld\n",prop.totalGlobalMem);
         fprintf(stderr,"\n");
-
+        */
     }
 
 
@@ -63,7 +64,7 @@ void gpuInit(int deviceIndex){
     }
 
     gpuErrchk( cudaGetDevice(&idev ) );
-    fprintf(stderr,"Using CUDA device : %d\n",idev);
+    //fprintf(stderr,"Using CUDA device : %d\n",idev);
 
 }
 
