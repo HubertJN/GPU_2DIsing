@@ -1,0 +1,29 @@
+#-*- mode: makefile; mode: font-lock; vc-back-end: Git -*-
+SHELL = /bin/sh
+
+# Where you want the binary
+prefix     = $(shell pwd)
+bindir     = $(prefix)/bin
+
+# C compiler and flags
+CC=gcc
+CFLAGS=-O3 
+
+# Command to use for linking and executable
+LD=gcc
+OBJECTS=functions/calc_mag.o functions/read_input_variables.o functions/read_input_grid.o
+
+# Rules for building object files
+all : mag
+%.o: %.c %.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# Default build target
+mag : $(OBJECTS) calculate_magnetization.o
+	$(LD) -o $(bindir)/calculate_magnetization $(OBJECTS) calculate_magnetization.o
+
+
+# Purge build files and executable
+clean :
+	rm calculate_magnetization.o
+	rm $(bindir)/calculate_magnetization
