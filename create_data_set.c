@@ -92,7 +92,7 @@ int main (int argc, char *argv[]) {
     }
 
     // Sort the loaded arrays based on the cluster size
-    int **p_store_mag = malloc(nreplicas*nsweeps/100*sizeof(long));;
+    int **p_store_mag = malloc(nreplicas*nsweeps/100*sizeof(long));
     int ta, tb, tc, td;
 
     // create array of pointers to store_cluster
@@ -101,7 +101,7 @@ int main (int argc, char *argv[]) {
     }
 
     // sort array of pointers
-    qsort(p_store_mag, nreplicas*nsweeps/100, sizeof(p_store_mag[0]), compare);
+    qsort(p_store_mag, nreplicas*nsweeps/100, sizeof(long), compare);
     
     // reorder loaded arrays according to the array of pointers
     for(i=0;i<nreplicas*nsweeps/100;i++){
@@ -127,8 +127,6 @@ int main (int argc, char *argv[]) {
         }
     }
 
-    free(p_store_mag); // Freed since no longer needed
-
     // Create array for storing starting index of each cluster size and how many of a given cluster exist
     int *store_mag_index = (int *)malloc(L*L*2*2*sizeof(int));
     if (store_mag_index==NULL){fprintf(stderr,"Error allocating memory for store_mag_index array!\n"); exit(EXIT_FAILURE);}
@@ -137,12 +135,12 @@ int main (int argc, char *argv[]) {
     int mag_check = 0;
     mag = 0;
     for (i=0;i<nreplicas*nsweeps/100;i++) {
-        mag = store_mag[i];
+        mag = store_mag[i]+L*L;
         if ( mag > mag_check) {
             mag_check = mag;
-            store_mag_index[(mag+L*L)*2] = i;
+            store_mag_index[(mag)*2] = i;
         }
-        store_mag_index[(mag+L*L)*2+1] = store_mag_index[(mag+L*L)*2+1]+1;
+        store_mag_index[(mag)*2+1] = store_mag_index[(mag)*2+1]+1;
     }
 
     int random_selection = 0; // Used to randomly select grid from index.bin file
@@ -152,7 +150,7 @@ int main (int argc, char *argv[]) {
     // Create array for storing random selections
     int *rand_array = (int *)malloc(samples*sizeof(int));
     if (rand_array==NULL){fprintf(stderr,"Error allocating memory for rand_array array!\n"); exit(EXIT_FAILURE);}
-    for (i=0;i<samples;i++) {rand_array[i]=0;}
+    for (i=0;i<samples;i++) {rand_array[i]=-1;}
 
     int counter = 0;
     int in, im, rn, rm;
@@ -160,7 +158,7 @@ int main (int argc, char *argv[]) {
     int full_iterations = 0;
     int partial_iterations = 0;
 
-    full_iterations = int(samples/(L*L*2));
+    full_iterations = (int)samples/(L*L*2);
     partial_iterations = samples % (L*L*2);
 
     for (i=0;i<full_iterations;i++) {
@@ -173,34 +171,63 @@ int main (int argc, char *argv[]) {
             }
         }
     }
-
+    
     im = 0;
     for (in = 0; in < max_mag-min_mag && im < partial_iterations; ++in) {
         rn = max_mag-min_mag - in;
-        rm = partial_interations - im;
+        rm = partial_iterations - im;
         if (rand() % rn < rm && store_mag_index[(in + min_mag)*2+1] > i) {
             rand_array[i*(L*L*2)+im++] = in + min_mag;
         }
     }
 
-    qsort(rand_array, samples, sizeof(int), compare);
-    
-    i = 1;
-    int out_num = rand_array[0];
+   int **p_rand_array = malloc(samples*sizeof(long));
+
+    // create array of pointers to store_cluster
+    for (i = 0; i < samples; i++) {
+        p_rand_array[i] = &rand_array[i];
+    }
+
+    // sort array of pointers
+    qsort(p_rand_array, samples, sizeof(long), compare);
+
+    // reorder loaded arrays according to the array of pointers
+    for(i=0;i<samples;i++){
+        if(i != p_rand_array[i]-rand_array){
+            ta = rand_array[i];
+            k = i;
+            while(i != (j = p_rand_array[k]-rand_array)){
+                rand_array[k] = rand_array[j];
+                p_rand_array[k] = &rand_array[k];
+                k = j;
+            }
+            rand_array[k] = ta; 
+            p_rand_array[k] = &rand_array[k];
+        }
+    }
+
+    i = 1; j = 0;
+    int out_num = 0;
+    int rand_array_start = 1;
     while(i < samples){
-        if(rand_array[i] != out_num){
+        if(rand_array[i] != out_num && rand_array[i] > -1){
             out_num = rand_array[i];
+            j += 1;
+        }
+        if(rand_array[i] < 0) {
+            rand_array_start++;
         }
         i++;
     }
 
-    int unique_rand = i;
+    int unique_rand = j;
     int *unique_rand_array = (int *)malloc(unique_rand*2*sizeof(int));
     if (unique_rand_array==NULL){fprintf(stderr,"Error allocating memory for unique_rand_array array!\n"); exit(EXIT_FAILURE);}
-    for (i = 0; i < unique_rand; i++) {unique_rand_array[i] = 0;}
+    for (i = 0; i < unique_rand*2; i++) {unique_rand_array[i] = 0;}
 
-    i = 1; j = 1; k = 1;
-    unique_rand_array = rand_array[0];
+    i = rand_array_start+1; j = 1; k = 1;
+    unique_rand_array[0] = rand_array[rand_array_start];
+
     while(i<samples){
         if(rand_array[i] != unique_rand_array[j*2]){
             unique_rand_array[j*2] = rand_array[i];
@@ -212,10 +239,11 @@ int main (int argc, char *argv[]) {
     }
     unique_rand_array[(j-1)*2+1] = k;
 
-    free(rand_array);
-    int *rand_array = (int *)malloc((full_iterations+1)*sizeof(int));
-    if (rand_array==NULL){fprintf(stderr,"Error allocating memory for rand_array array!\n"); exit(EXIT_FAILURE);}
-    for (i = 0; i < full_iterations+1; i++) {rand_array[i] = 0;}
+    printf("Total available samples: %d\n", samples-rand_array_start);
+
+    int *rand_array_sub = (int *)malloc((full_iterations+1)*sizeof(int));
+    if (rand_array_sub==NULL){fprintf(stderr,"Error allocating memory for rand_array_sub array!\n"); exit(EXIT_FAILURE);}
+    for (i = 0; i < full_iterations+1; i++) {rand_array_sub[i] = 0;}
 
     for (i = 0; i < unique_rand; i++) {
         im = 0;
@@ -223,26 +251,32 @@ int main (int argc, char *argv[]) {
             rn = store_mag_index[unique_rand_array[i*2]*2+1] - in;
             rm = unique_rand_array[i*2+1] - im;
             if (rand() % rn < rm) {
-                rand_array[im++] = in;
+                rand_array_sub[im++] = in;
             }
         }
-        for (j = 0, j < unique_rand_array[i*2+1], j++) {
-            random_selection = rand_array[j]+unique_rand_array[i*2];
+        
+        for (j = 0; j < unique_rand_array[i*2+1]; j++) {
+            random_selection = rand_array_sub[j]+store_mag_index[unique_rand_array[i*2]*2];
             selected_mag = store_mag[random_selection];
             fwrite(&store_slice[random_selection], sizeof(int), 1, committor_file);
             fwrite(&store_ngrid[random_selection], sizeof(int), 1, committor_file);
             fwrite(&selected_mag, sizeof(int), 1, committor_file);
             fwrite(&store_committor[random_selection], sizeof(double), 1, committor_file);
             fwrite(&store_committor[random_selection], sizeof(double), 1, committor_file); // Write to create space for standard deviation
+            counter += 1;
         }
-        counter += 1;
-        printf("\rPercentage of samples selected: %d%%", (int)((double)counter/(double)((max_mag-min_mag+1))*100)); // Print progress
+        //printf("\rPercentage of samples selected: %d%%", (int)(100.0*(double)counter/(double)(samples-rand_array_start))); // Print progress
         fflush(stdout);
-    }  
+    } 
+
+    for (i = 0; i < unique_rand; i++) {
+        printf("%d %d %d\n", unique_rand_array[i*2], store_mag_index[unique_rand_array[i*2]*2], store_mag_index[unique_rand_array[i*2]*2+1]);
+    }
 
     printf("\n"); // Newline
 
-    free(store_ngrid); free(store_slice); free(store_mag); free(store_committor);
+    free(store_ngrid); free(store_slice); free(store_mag); free(store_mag_index); free(store_committor); free(rand_array); free(rand_array_sub); free(unique_rand_array);
+    free(p_store_mag); free(p_rand_array);
     fclose(index_file); fclose(committor_file);
 
     // Print time taken for program to execute
