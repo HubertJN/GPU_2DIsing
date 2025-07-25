@@ -1,6 +1,4 @@
-NOTES.txt
-*.o
-gridstates.dat
-.vscode
-*workspace
-*~
+bin/
+obj/
+out/
+
