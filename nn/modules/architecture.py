@@ -1,7 +1,8 @@
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
-
+from torch.utils.data import DataLoader as TorchDataLoader
+from torch_geometric.loader import DataLoader as PyGDataLoader
+from torch_geometric.nn import GCNConv, global_mean_pool
 
 def loss_batch(model, loss_func, xb, yb, opt=None):
     loss = loss_func(model(xb), yb)
@@ -29,8 +30,23 @@ def fit(epochs, model, loss_func, opt, train_dl, valid_dl):
         print(f"Epoch {epoch+1}/{epochs} - Validation Loss: {val_loss:.4f}")
 
 
-def data_to_dataloader(train_ds, valid_ds, bs):
-    return DataLoader(train_ds, batch_size=bs, shuffle=True), DataLoader(valid_ds, batch_size=bs)
+def data_to_dataloader(train_ds, valid_ds, bs, model_type="cnn"):
+    """
+    Return DataLoaders for training and validation datasets.
+    
+    Args:
+        train_ds, valid_ds: Dataset objects
+        bs: batch size
+        model_type: "cnn" or "gnn"
+    """
+    if model_type == "cnn":
+        train_dl = TorchDataLoader(train_ds, batch_size=bs, shuffle=True)
+        valid_dl = TorchDataLoader(valid_ds, batch_size=bs)
+    else:  # gnn
+        train_dl = PyGDataLoader(train_ds, batch_size=bs, shuffle=True)
+        valid_dl = PyGDataLoader(valid_ds, batch_size=bs)
+    
+    return train_dl, valid_dl
 
 
 class CNN(torch.nn.Module):
@@ -51,3 +67,22 @@ class CNN(torch.nn.Module):
         xb = self.pool(xb)
         xb = xb.view(xb.size(0), -1)
         return torch.sigmoid(self.fc(xb))
+
+class GNN(torch.nn.Module):
+    """
+    Simple GCN for 2D Ising grids.
+    Treat each spin as a node; connect to 4 nearest neighbors (up/down/left/right).
+    """
+    def __init__(self, channels=32):
+        super().__init__()
+        self.conv1 = GCNConv(1, channels)
+        self.conv2 = GCNConv(channels, channels)
+        self.fc = torch.nn.Linear(channels, 1)
+
+    def forward(self, data_batch):
+        # data_batch: PyG Batch object with x (node features), edge_index, batch
+        x, edge_index, batch = data_batch.x, data_batch.edge_index, data_batch.batch
+        x = x + torch.relu(self.conv1(x, edge_index))
+        x = x + torch.relu(self.conv2(x, edge_index))
+        x = global_mean_pool(x, batch)  # aggregate node features per graph
+        return torch.sigmoid(self.fc(x))

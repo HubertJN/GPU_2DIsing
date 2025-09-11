@@ -2,60 +2,30 @@ import h5py
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from torch_geometric.data import Data
 
-
-def read_attr(ds, name):
-    """Safely read an attribute from an HDF5 dataset."""
-    val = ds.attrs.get(name)
-    if isinstance(val, bytes):
-        val = val.decode('utf-8')
-    if val == 'null':
-        return np.nan
-    return float(val)
-
-
-class IsingDataset(Dataset):
-    def __init__(self, data, labels, device="cpu"):
-        """
-        Initializes Dataset object for Ising data.
-        
-        Args:
-            data (torch.Tensor): Ising grids
-            labels (torch.Tensor): committor values for each grid
-            device (str): device to load tensors onto (default: "cpu")
-        """
-        self.data = data.to(device)
-        self.labels = labels.to(device)
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        data = self.data[idx]
-        label = self.labels[idx]
-        return data, label
-
-
-def load_hdf5_as_dataset(h5path, device="cpu"):
+# ----------------- Raw HDF5 loading -----------------
+def load_hdf5_raw(h5path):
     """
-    Loads an HDF5 file and returns a PyTorch Dataset.
-
-    Args:
-        h5path (str): Path to HDF5 file.
-        device (str): Device to store tensors ("cpu" or "cuda").
-
+    Load grids and attributes from HDF5 file as NumPy arrays.
     Returns:
-        IsingDataset: dataset wrapping grids and committor values.
+        grids: np.ndarray, shape (N, L, L)
+        attrs: np.ndarray, shape (N, 4)
     """
+    def read_attr(ds, name):
+        val = ds.attrs.get(name)
+        if isinstance(val, bytes):
+            val = val.decode('utf-8')
+        if val == 'null':
+            return np.nan
+        return float(val)
+
     print(f"Opening HDF5 file: {h5path}")
     with h5py.File(h5path, 'r') as f:
         total_saved = int(f['total_saved_grids'][()])
         L = int(f['L'][()])
-
-        print(f"Header read: total_saved_grids={total_saved}, L={L}")
-
-        training_grids = np.empty((total_saved, L, L), dtype=np.int8)
-        training_attrs = np.empty((total_saved, 4), dtype=np.float64)
+        grids = np.empty((total_saved, L, L), dtype=np.int8)
+        attrs = np.empty((total_saved, 4), dtype=np.float64)
 
         idx = 0
         for grid_name in sorted(k for k in f.keys() if k.startswith('grid_')):
@@ -63,26 +33,83 @@ def load_hdf5_as_dataset(h5path, device="cpu"):
             if idx >= total_saved:
                 break
 
-            training_grids[idx] = grp[()]
-
-            training_attrs[idx, 0] = read_attr(grp, 'magnetisation')
-            training_attrs[idx, 1] = read_attr(grp, 'lclus_size')
-            training_attrs[idx, 2] = read_attr(grp, 'committor')
-            training_attrs[idx, 3] = read_attr(grp, 'committor_error')
+            grids[idx] = grp[()]
+            attrs[idx, 0] = read_attr(grp, 'magnetisation')
+            attrs[idx, 1] = read_attr(grp, 'lclus_size')
+            attrs[idx, 2] = read_attr(grp, 'committor')
+            attrs[idx, 3] = read_attr(grp, 'committor_error')
 
             idx += 1
 
-        print(f"Loaded {idx} grids. "
-              f"grids.shape={training_grids.shape}, "
-              f"attrs.shape={training_attrs.shape}")
+    print(f"Loaded {idx} grids. grids.shape={grids.shape}, attrs.shape={attrs.shape}")
+    return grids, attrs
 
-    # Convert numpy arrays to tensors
-    data_tensor = torch.tensor(training_grids, dtype=torch.float32).unsqueeze(1)  # add channel dim
-    labels_tensor = torch.tensor(training_attrs[:, 2], dtype=torch.float32)       # committor only
 
-    print("Converted numpy arrays to torch.Tensors")
+# ----------------- CNN Dataset -----------------
+class IsingDatasetCNN(Dataset):
+    def __init__(self, grids, labels, device="cpu"):
+        self.data = grids.to(device)
+        self.labels = labels.to(device)
 
-    dataset = IsingDataset(data_tensor, labels_tensor, device=device)
-    print("Dataset successfully created")
+    def __len__(self):
+        return len(self.labels)
 
-    return dataset
+    def __getitem__(self, idx):
+        return self.data[idx], self.labels[idx]
+
+
+def to_cnn_dataset(grids, attrs, device="cpu"):
+    data_tensor = torch.tensor(grids, dtype=torch.float32).unsqueeze(1)
+    labels_tensor = torch.tensor(attrs[:, 2], dtype=torch.float32)
+    return IsingDatasetCNN(data_tensor, labels_tensor, device=device)
+
+
+# ----------------- GNN Dataset -----------------
+class IsingDatasetGNN(Dataset):
+    def __init__(self, grids, attrs, device="cpu"):
+        """
+        Converts 2D Ising grids into a PyG GNN dataset with periodic edges,
+        styled similarly to a simple CNN dataset class.
+        """
+        self.device = device
+        self.N, self.L, _ = grids.shape
+        self.edge_index = self._compute_edges(self.L).to(device)
+
+        # Convert grids and labels to tensors
+        self.graphs = []
+        labels_tensor = torch.tensor(attrs[:, 2], dtype=torch.float32).to(device)
+        for idx in range(self.N):
+            x = torch.tensor(grids[idx], dtype=torch.float32).view(-1, 1).to(device)
+            y = labels_tensor[idx].unsqueeze(0)
+            self.graphs.append(Data(x=x, edge_index=self.edge_index, y=y))
+
+    def _compute_edges(self, L):
+        """Preallocate edge tensor for L x L grid with periodic boundaries."""
+        num_nodes = L * L
+        num_edges = num_nodes * 4
+        edges = torch.empty((2, num_edges), dtype=torch.long)
+
+        idx = 0
+        for i in range(L):
+            for j in range(L):
+                node = i * L + j
+                neighbors = [
+                    ((i - 1) % L) * L + j,  # up
+                    ((i + 1) % L) * L + j,  # down
+                    i * L + (j - 1) % L,    # left
+                    i * L + (j + 1) % L     # right
+                ]
+                for n in neighbors:
+                    edges[0, idx] = node
+                    edges[1, idx] = n
+                    idx += 1
+        return edges.contiguous()
+
+    def __len__(self):
+        return self.N
+
+    def __getitem__(self, idx):
+        return self.graphs[idx]
+
+def to_gnn_dataset(grids, attrs, device="cpu"):
+    return IsingDatasetGNN(grids, attrs, device=device)
