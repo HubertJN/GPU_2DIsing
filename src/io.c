@@ -220,33 +220,59 @@ int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep, floa
     H5Tset_size(str_tid, H5T_VARIABLE);
     hid_t attr_sid = H5Screate(H5S_SCALAR);
 
-    hsize_t dims[2]; dims[0] = L; dims[1] = L;
-
+    /* For HDF5 storage we will pack 8 Ising spins per byte: +1 -> 1, -1 -> 0.
+       Each grid will be stored as a 1D dataset of unsigned bytes. */
     for (int g = 0; g < ngrids; ++g) {
         char dsetname[64];
         snprintf(dsetname, sizeof(dsetname), "grid_%d", g);
 
-        hid_t dspace = H5Screate_simple(2, dims, NULL);
+        /* number of bits and bytes needed for this grid */
+        size_t nbits = (size_t)L * (size_t)L;
+        size_t nbytes = nbits / 8;
+
+        hsize_t bdims[1]; bdims[0] = nbytes;
+        hid_t dspace = H5Screate_simple(1, bdims, NULL);
         if (dspace < 0) {
             fprintf(stderr, "Error: failed to create dataspace for '%s'\n", dsetname);
             continue;
         }
 
-        hid_t dset = H5Dcreate2(grp, dsetname, H5T_NATIVE_INT, dspace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        hid_t dset = H5Dcreate2(grp, dsetname, H5T_NATIVE_UCHAR, dspace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         if (dset < 0) {
             fprintf(stderr, "Error: failed to create dataset '%s'\n", dsetname);
             H5Sclose(dspace);
             continue;
         }
 
-        /* Write grid data: pointer to start of this grid */
-        int *data_ptr = &ising_grids[g * L * L];
-        if (H5Dwrite(dset, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, data_ptr) < 0) {
+        /* Allocate buffer for packed bytes */
+        unsigned char *buf = (unsigned char *)malloc(nbytes);
+        if (buf == NULL) {
+            fprintf(stderr, "Error allocating output buffer for '%s'\n", dsetname);
+            H5Dclose(dset);
+            H5Sclose(dspace);
+            continue;
+        }
+        memset(buf, 0, nbytes);
+
+        /* Pack bits: LSB first (bit 0 corresponds to first site). */
+        size_t ibit = 0, ibyte = 0;
+        int *grid_ptr = &ising_grids[g * L * L];
+        for (size_t i = 0; i < nbits; ++i) {
+            if (grid_ptr[i] == 1) {
+                buf[ibyte] |= (unsigned char)(1U << ibit);
+            }
+            ibit++;
+            if (ibit == 8) { ibit = 0; ibyte++; }
+        }
+
+        /* Write packed bytes */
+        if (H5Dwrite(dset, H5T_NATIVE_UCHAR, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf) < 0) {
             fprintf(stderr, "Error: failed to write dataset '%s'\n", dsetname);
         } else {
-            /* increment counter only on successful write */
             counter++;
         }
+
+        free(buf);
 
         /* Prepare attribute strings */
         const char *mstr = "null";
