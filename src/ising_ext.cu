@@ -11,6 +11,7 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 #include <Python.h>
+#include <structmember.h>
 
 extern "C" {
   #include "io.h"
@@ -32,6 +33,112 @@ int gpu_nsms;  // Number of multiprocessors on the GPU
    generated to pass back to Python. 8 bit integers to save RAM */
 int8_t* grid_history = NULL;
 int ihist = 0;                 // Current snapshot number
+
+/* Struct which represents an instance of a grid snapshot object */
+typedef struct {
+    PyObject_HEAD
+    int isweep;             // MC sweep at which the grid was captured
+    int igrid;              // Which grid in the ensemble is this
+    float magnetisation;    // Sum of spins
+    float lclus_size;       // Size of largest cluster of spins opposite to initial spin
+    float committor;        // Committor value
+    PyObject *grid;         // Numpy array that holds the grid of spins
+} GridSnapObject;
+
+
+/* Struct which defines the members of the struct as they'll be seen by Python */
+static PyMemberDef GridSnapObject_members[] = {
+    {"isweep", T_INT, offsetof(GridSnapObject, isweep), 0, "MC sweep at which the grid was captured"},
+    {"igrid", T_INT, offsetof(GridSnapObject, igrid), 0, "Which grid in the ensemble is this"},
+    {"magnetisation", T_FLOAT, offsetof(GridSnapObject, magnetisation), 0, "Magnetisation - i.e. sum of spins"},
+    {"lclus_size", T_FLOAT, offsetof(GridSnapObject, lclus_size), 0, "Size of largest cluser of spins opposite to initial spin"},
+    {"committor", T_FLOAT, offsetof(GridSnapObject, committor), 0, "Committor value if available. -1 if not."},
+    //{"grid", T_OBJECT, offsetof(GridSnapObject, grid), 0, "Numpy array that holds the grid of spins"},
+    {NULL}  /* Sentinel */
+};
+
+/* We don't let Python access the grid via the struct, instead we define get/set functions so we can handle reference counting*/
+static PyObject *get_grid(GridSnapObject *self, void *closure) {
+    Py_INCREF(self->grid); // Increment reference count before returning
+    return self->grid;
+}
+
+static int set_grid(GridSnapObject *self, PyObject *value, void *closure) {
+    if (!PyArray_Check(value)) {
+        PyErr_SetString(PyExc_TypeError, "grid must be a numpy array");
+        return -1;
+    }
+    Py_XDECREF(self->grid); // Decrement old reference count
+    self->grid = value;
+    Py_INCREF(self->grid); // Increment new reference count
+    return 0;
+}
+
+static PyGetSetDef GridSnapObject_getset[] = {
+    {"grid", (getter)get_grid, (setter)set_grid, "2D numpy array of 8-bit integers", NULL},
+    {NULL}  /* Sentinel */
+};
+
+
+/* Constructor for the GridSnapObject type */
+static int GridSnapObject_init(GridSnapObject *self, PyObject *args, PyObject *kwds) {
+    long int in_isweep, in_igrid;
+    PyObject *in_numpy_array = NULL;
+
+    // A format string for parsing arguments: "iiO" means two long integers and one Python object
+    if (!PyArg_ParseTuple(args, "iiO", &in_isweep, &in_igrid, &in_numpy_array)) {
+        return -1; // Parsing failed
+    }
+
+    // Check if the provided object is a NumPy array of the correct type and dimensions
+    if (!PyArray_Check(in_numpy_array)) {
+        PyErr_SetString(PyExc_TypeError, "Third argument must be a NumPy array.");
+        return -1;
+    }
+
+    // Check for 8-bit integers (np.int8) and 2 dimensions
+    PyArrayObject *arr = (PyArrayObject *)in_numpy_array;
+    if (PyArray_TYPE(arr) != NPY_INT8 || PyArray_NDIM(arr) != 2) {
+        PyErr_SetString(PyExc_TypeError, "NumPy array must be 2D with 8-bit integer elements.");
+        return -1;
+    }
+
+    // Set the properties of the C struct
+    self->isweep = in_isweep;
+    self->igrid = in_igrid;
+    self->magnetisation = 0.0; // Default value (will always be available)
+    self->lclus_size = -1.0;   // Default value (-1 if not available)
+    self->committor = -1.0;    // Default value (-1 if not available)
+
+    // Assign the NumPy array and manage its reference count
+    Py_INCREF(in_numpy_array); // Increment the reference count for the new object
+    self->grid = in_numpy_array;
+
+    return 0; // Success
+}
+
+/* Deallocator for the GridSnapObject type */
+static void GridSnapObject_dealloc(GridSnapObject *self) {
+    // Release the reference to the grid
+    Py_XDECREF(self->grid);
+
+    // Call the base type's deallocator to free the object's memory
+    Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+/* Define the Types that GridSnapObjects are an instance of */
+PyTypeObject GridSnapObjectType = {
+    PyObject_HEAD_INIT(NULL)
+    .tp_name = "gasp.GridSnapObject",
+    .tp_basicsize = sizeof(GridSnapObject),
+    .tp_dealloc = (destructor)GridSnapObject_dealloc,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_members = GridSnapObject_members,
+    .tp_getset = GridSnapObject_getset,
+    .tp_init = (initproc)GridSnapObject_init,
+    .tp_new = PyType_GenericNew,
+  };  
+
 
 static PyObject* reset_grids_list(PyObject* self, PyObject* args) {
     PyObject *module, *new_list;
@@ -62,6 +169,9 @@ static PyObject* reset_grids_list(PyObject* self, PyObject* args) {
     Py_DECREF(module);
     Py_RETURN_NONE;
 }
+
+
+
 
 
 PyObject* populate_grids_list(int L, int ngrids, int* grid_data) {
@@ -112,7 +222,7 @@ PyObject* populate_grids_list(int L, int ngrids, int* grid_data) {
 
 
 
-int append_grids_list(int L, int ngrids, int* grid_data, int isweep, float* magnetisation, float *lclus_size) {
+int append_grids_list(int L, int ngrids, int* grid_data, int isweep, float* magnetisation, float *lclus_size, char *cv,double dn_thr, double up_thr) {
 
   npy_intp dims[2] = {L, L};
 
@@ -725,11 +835,24 @@ PyMODINIT_FUNC PyInit_gasp(void) {
    // Initialize NumPy API
   import_array();
   
+  /* Register the custom type we'll use to pass grids back to Python */
+  if (PyType_Ready(&GridSnapObjectType) < 0) {
+      return NULL;
+  }
+
   /* Assign created module to a variable */
   PyObject* module = PyModule_Create(&gaspmodule);
   if (!module) {
     PyErr_SetString(PyExc_RuntimeError, "Could not create gasp module");
     return NULL;
+  }
+
+  /* Add the custom type to the module */
+  Py_INCREF(&GridSnapObjectType);
+  if (PyModule_AddObject(module, "GridSnapObject", (PyObject *) &GridSnapObjectType) < 0) {
+      Py_DECREF(&GridSnapObjectType);
+      Py_DECREF(module);
+      return NULL;
   }
 
   /* Initialise GPU device if available on import */

@@ -27,7 +27,7 @@ typedef struct {
 
 
 // Function typedef obeyed by functions which output/store grids
-typedef int (*GridOutputFunc)(int L, int ngrids, int* grid_data, int isweep, float* magnetisation, float *lclus_size);
+typedef int (*GridOutputFunc)(int L, int ngrids, int* grid_data, int isweep, float* magnetisation, float *lclus_size, char *cv, double dn_thr, double up_thr);
 
 // pre-compute acceptance probabilities for spin flips
 void preComputeProbs_cpu(double beta, double h);

@@ -64,7 +64,7 @@ void read_input_grid(int L, int ngrids, int *ising_grids){
 
 }
 
-int write_ising_grids(int L, int ngrids, int *ising_grids, int isweep, float *magnetisation, float *lclus_size){
+int write_ising_grids(int L, int ngrids, int *ising_grids, int isweep, float *magnetisation, float *lclus_size, char *cv, double dn_thr, double up_thr){
 
     // Set filename
     char filename[15];
@@ -192,7 +192,7 @@ int create_ising_grids_hdf5(int L, int ngrids, int tot_nsweeps, double h, double
     return 0;
 }
 
-int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep, float *magnetisation, float *lclus_size) {
+int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep, float *magnetisation, float *lclus_size, char *cv, double dn_thr, double up_thr) {
     const char *filename = "gridstates.hdf5";
     hid_t file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
     if (file_id < 0) {
