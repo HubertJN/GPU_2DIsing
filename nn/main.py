@@ -3,8 +3,9 @@ import sys
 import torch
 from torch.utils.data import Subset
 from sklearn.model_selection import train_test_split
-from modules.architecture import CNN, GNN, data_to_dataloader, fit, loss_batch
-from modules.dataset import load_hdf5_raw, to_cnn_dataset, to_gnn_dataset
+from modules.architecture import CNN, GNN, data_to_dataloader, fit, loss_batch, physics_func
+from modules.dataset import load_hdf5_raw, to_cnn_dataset, to_gnn_dataset, uniform_filter
+import numpy as np
 
 # --- Command-line arguments ---
 parser = argparse.ArgumentParser(description="Train CNN or GNN on 2D Ising grids")
@@ -24,20 +25,26 @@ save_path = f"models/{model_type}.pth"
 
 # --- Config ---
 device = "cuda" if torch.cuda.is_available() else "cpu"
-batch_size = 32
-epochs = 10
-lr = 1e-3
+batch_size = 128
+epochs = 64
+lr = 0.001
+wd = 0.0001
 test_size = 0.2  # fraction for validation
 
 # --- Load full dataset ---
 print("Loading full dataset...")
 grids, attrs = load_hdf5_raw(h5path)
 
+print("Filtering for uniform committor distribution...")
+subset_indices = uniform_filter(grids, attrs[:,2], num_bins=10)
+grids = grids[subset_indices]
+attrs = attrs[subset_indices]
+
 # Choose dataset type based on model
 if model_type == "cnn":
-    dataset = to_cnn_dataset(grids, attrs, device="cpu")
+    dataset = to_cnn_dataset(grids, attrs, device)
 else:
-    dataset = to_gnn_dataset(grids, attrs, device="cpu")
+    dataset = to_gnn_dataset(grids, attrs, device)
 
 print(f"Full dataset size: {len(dataset)}")
 
@@ -55,17 +62,16 @@ print(f"DataLoaders created: train_batches={len(train_dl)}, valid_batches={len(v
 
 # --- Initialize model, loss, optimizer ---
 if model_type == "cnn":
-    model = CNN(input_size=grids.shape[1]).to(device)
+    model = CNN(channels=16, num_cnn_layers=4, num_fc_layers=1).to(device)
 else:
     model = GNN().to(device)
 
-loss_func = torch.nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+loss_func = torch.nn.SmoothL1Loss()
+optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
 
-exit()
 # --- Train ---
 print(f"Starting training for {model_type.upper()}...")
-fit(epochs, model, loss_func, optimizer, train_dl, valid_dl)
+fit(epochs, model, loss_func, physics_func, optimizer, train_dl, valid_dl, device)
 print("Training complete.")
 
 # --- Save model weights ---
