@@ -60,7 +60,7 @@ class IsingDatasetCNN(Dataset):
 
 def to_cnn_dataset(grids, attrs, device="cpu"):
     data_tensor = torch.tensor(grids, dtype=torch.float32).unsqueeze(1)
-    labels_tensor = torch.tensor(attrs[:, 2], dtype=torch.float32)
+    labels_tensor = torch.tensor(attrs[:, 2], dtype=torch.float32).unsqueeze(1)
     return IsingDatasetCNN(data_tensor, labels_tensor, device=device)
 
 
@@ -113,3 +113,35 @@ class IsingDatasetGNN(Dataset):
 
 def to_gnn_dataset(grids, attrs, device="cpu"):
     return IsingDatasetGNN(grids, attrs, device=device)
+
+# Uniform distribution filter
+
+def uniform_filter(data, labels, num_bins=10):
+  # Define bins
+  bins = np.linspace(0, 1, num_bins + 1)
+  num_to_sample = len(data)
+
+  subset_indices = []
+
+  for i in range(num_bins):
+      # Find indices of labels in this bin
+      bin_idx = np.where((labels >= bins[i]) & (labels < bins[i+1]))[0]
+
+      # If bin is too small, skip or take all
+      if len(bin_idx) == 0:
+          continue
+
+      # Sample from this bin (with or without replacement)
+      num_to_sample = min(num_to_sample, len(bin_idx))
+      
+  for i in range(num_bins):
+      # Find indices of labels in this bin
+      bin_idx = np.where((labels >= bins[i]) & (labels < bins[i+1]))[0]
+
+      selected = np.random.choice(bin_idx, size=num_to_sample, replace=False)
+      
+      subset_indices.extend(selected)
+
+  # Convert to NumPy array
+  subset_indices = np.array(subset_indices)
+  return subset_indices
