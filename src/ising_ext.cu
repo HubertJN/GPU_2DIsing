@@ -506,7 +506,6 @@ static PyObject* method_run_nucleation_swarm(PyObject* self, PyObject* args, PyO
 #ifndef PYTHON
     fprintf(stdout, "# isweep    nucleated fraction\n");
 #endif
-
     create_ising_grids_hdf5(L, ngrids, tot_nsweeps, h, beta);
     //result = mc_driver_gpu(grids, beta, h, grid_fate, samples, calc, gpu_state, write_ising_grids);
     //mc_driver_gpu(grids, beta, h, grid_fate, samples, calc, gpu_state, append_grids_list);
