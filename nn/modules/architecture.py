@@ -18,13 +18,14 @@ def loss_batch(model, loss_func, physics_loss, xb, yb, opt=None):
 
 def physics_func(model, xb, one, zero):
     loss = 0
-    #loss += 0.1 * (model(zero).mean()) ** 2
-    #loss += 0.1 * ((model(one) - 1).mean()) ** 2
+    constant = 0.01
+    #loss += constant * (model(zero).mean()) ** 2
+    #loss += constant * ((model(one) - 1).mean()) ** 2
     return loss
 
 def fit(epochs, model, loss_func, physics_func, opt, train_dl, valid_dl, device="cpu"):
-    zero = torch.zeros([64,64], dtype=torch.float32).to(device)
-    one = torch.ones([64,64], dtype=torch.float32).to(device)
+    zero = torch.zeros([64,64], dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
+    one = torch.ones([64,64], dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
 
     # Determine width for epoch numbers (4 digits max)
     width = max(4, len(str(epochs)))
@@ -70,70 +71,79 @@ def data_to_dataloader(train_ds, valid_ds, bs, model_type="cnn"):
     return train_dl, valid_dl
 
 class ResidualCNN(nn.Module):
-    def __init__(self, in_channels, out_channels,
-                 kernel_size=3, dilation=1, dropout=0.0):
-        super().__init__()
-        padding = dilation * (kernel_size // 2)
-        self.conv = nn.Conv2d(in_channels, out_channels,
-                              kernel_size=kernel_size,
-                              stride=1, padding=padding,
-                              dilation=dilation, padding_mode="circular")
-        self.dropout = nn.Dropout(dropout)
-        self.proj = None
-        if in_channels != out_channels:
-            self.proj = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+	def __init__(self, in_channels, out_channels, kernel_size=3, dilation=1, dropout=0.0):
+		super().__init__()
+		padding = dilation * (kernel_size // 2)
+		self.conv = nn.Conv2d(in_channels, out_channels,
+							  kernel_size=kernel_size,
+							  stride=1, padding=padding,
+							  dilation=dilation, padding_mode="circular")
+		self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
-        identity = x
-        out = F.leaky_relu(self.conv(x))
-        out = self.dropout(out)
-        if self.proj is not None:
-            identity = self.proj(identity)
-        out += identity
-        return F.leaky_relu(out)
+		# Projection if channels differ
+		self.proj = None
+		if in_channels != out_channels:
+			self.proj = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+	def forward(self, x):
+		identity = x
+		out = F.leaky_relu(self.conv(x))
+		out = self.dropout(out)
+		if self.proj is not None:
+			identity = self.proj(identity)
+		out += identity
+		return F.leaky_relu(out)
 
 class CNN(nn.Module):
-    def __init__(self, input_size=64, channels=16, dropout=0.2,
-                 num_cnn_layers=3, num_fc_layers=2):
-        super().__init__()
-        self.input_size = input_size
+	def __init__(self, input_size=64, channels=16, dropout=0.2,
+				num_cnn_layers=3, num_fc_layers=2):
+		super().__init__()
+		self.input_size = input_size
 
-        # Build CNN layers
-        self.cnn_layers = nn.ModuleList()
-        for i in range(num_cnn_layers):
-            in_ch = 1 if i == 0 else channels
-            dilation = 1 if i == 0 else (2**i)  # example progressive dilation
-            self.cnn_layers.append(ResidualCNN(in_ch, channels, dilation=dilation, dropout=dropout))
+		# Single BatchNorm at input
+		self.input_bn = nn.BatchNorm2d(1)
 
-        self.pool = nn.AdaptiveAvgPool2d(1)
+		# CNN residual layers
+		self.cnn_layers = nn.ModuleList()
+		for i in range(num_cnn_layers):
+			in_ch = 1 if i == 0 else channels
+			dilation = 1 if i == 0 else (2**i)
+			self.cnn_layers.append(
+				ResidualCNN(in_ch, channels, dilation=dilation, dropout=dropout)
+			)
 
-        # Build fully connected residual layers
-        self.fc_layers = nn.ModuleList()
-        for _ in range(num_fc_layers):
-            self.fc_layers.append(
-                nn.Sequential(
-                    nn.Linear(channels, channels),
-                    nn.LeakyReLU(),
-                    nn.Dropout(dropout)
-                )
-            )
+		self.pool = nn.AdaptiveAvgPool2d(1)
 
-        self.out = nn.Linear(channels, 1)
+		# Fully connected residual layers without normalization
+		self.fc_layers = nn.ModuleList()
+		for _ in range(num_fc_layers):
+			self.fc_layers.append(nn.Sequential(
+				nn.Linear(channels, channels),
+				nn.LeakyReLU(),
+				nn.Dropout(dropout)
+			))
 
-    def forward(self, x):
-        x = x.view(-1, 1, self.input_size, self.input_size)
-        for layer in self.cnn_layers:
-            x = layer(x)
-        x = self.pool(x)
-        x = x.view(x.size(0), -1)
+		self.out = nn.Linear(channels, 1)
 
-        # Apply fully connected residual layers
-        for fc in self.fc_layers:
-            identity = x
-            x = identity + fc(x)
+	def forward(self, x):
+		# Interpolate to desired input size
+		#x = F.interpolate(x, size=(self.input_size, self.input_size),
+		#				mode="bilinear", align_corners=False)
 
-        x = self.out(x)
-        return x
+		#x = self.input_bn(x)  # normalize input once
+
+		for layer in self.cnn_layers:
+			x = layer(x)
+
+		x = self.pool(x)
+		x = x.view(x.size(0), -1)
+
+		for fc in self.fc_layers:
+			identity = x
+			x = identity + fc(x)
+
+		x = self.out(x)
+		return x
 
 class GNN(torch.nn.Module):
     """
