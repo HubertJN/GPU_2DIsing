@@ -1,168 +1,243 @@
-import torch
-import torch.nn.functional as F
-import torch.nn as nn
+import h5py
 import numpy as np
+import torch
+from torch.utils.data import Dataset
+from torch_geometric.data import Data
+from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader as TorchDataLoader
 from torch_geometric.loader import DataLoader as PyGDataLoader
-from torch_geometric.nn import GCNConv, global_mean_pool
 
-def loss_batch(model, loss_func, physics_loss, xb, yb, opt=None):
-    loss = loss_func(model(xb), yb)
-    loss += physics_loss
-    
-    if opt is not None:
-        loss.backward()
-        opt.step()
-        opt.zero_grad()
-    return loss.item(), len(xb)
+# ----------------- Raw HDF5 loading -----------------
+def load_hdf5_raw(h5path):
+  """
+  Load grids and attributes from HDF5 file as NumPy arrays.
+  Returns:
+    grids: np.ndarray, shape (N, L, L)
+    attrs: np.ndarray, shape (N, 4)
+  """
+  def read_attr(ds, name):
+    val = ds.attrs.get(name)
+    if isinstance(val, bytes):
+      val = val.decode('utf-8')
+    if val == 'null':
+      return np.nan
+    return float(val)
 
-def physics_func(model, xb, one, zero):
-    loss = 0
-    constant = 0.01
-    #loss += constant * (model(zero).mean()) ** 2
-    #loss += constant * ((model(one) - 1).mean()) ** 2
-    return loss
+  print(f"Opening HDF5 file: {h5path}")
+  with h5py.File(h5path, 'r') as f:
+    total_saved = int(f['total_saved_grids'][()])
+    L = int(f['L'][()])
+    grids = np.empty((total_saved, L, L), dtype=np.int8)
+    attrs = np.empty((total_saved, 4), dtype=np.float64)
 
-def fit(epochs, model, loss_func, physics_func, opt, train_dl, valid_dl, device="cpu"):
-    zero = torch.zeros([64,64], dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
-    one = torch.ones([64,64], dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
+    idx = 0
+    for grid_name in sorted(k for k in f.keys() if k.startswith('grid_')):
+      grp = f[grid_name]
+      if idx >= total_saved:
+        break
 
-    # Determine width for epoch numbers (4 digits max)
-    width = max(4, len(str(epochs)))
+      grids[idx] = grp[()]
+      attrs[idx, 0] = read_attr(grp, 'magnetisation')
+      attrs[idx, 1] = read_attr(grp, 'lclus_size')
+      attrs[idx, 2] = read_attr(grp, 'committor')
+      attrs[idx, 3] = read_attr(grp, 'committor_error')
 
-    for epoch in range(epochs):
-        # --- Training ---
-        model.train()
-        train_losses = []
-        for xb, yb in train_dl:
-            loss_val, n = loss_batch(model, loss_func, physics_func(model, xb, one, zero), xb, yb, opt)
-            train_losses.append((loss_val, n))
+      idx += 1
 
-        # Weighted average of training loss
-        train_vals, train_counts = zip(*train_losses)
-        train_loss = np.sum(np.multiply(train_vals, train_counts)) / np.sum(train_counts)
+  print(f"Loaded {idx} grids. grids.shape={grids.shape}, attrs.shape={attrs.shape}")
+  return grids, attrs
 
-        # --- Validation ---
-        model.eval()
-        with torch.no_grad():
-            val_losses = [loss_batch(model, loss_func, physics_func(model, xb, one, zero), xb, yb) for xb, yb in valid_dl]
-            val_vals, val_counts = zip(*val_losses)
-            val_loss = np.sum(np.multiply(val_vals, val_counts)) / np.sum(val_counts)
+# ----------------- CNN Dataset with Rotations + Reflections -----------------
+class IsingDatasetCNN(Dataset):
+  def __init__(self, grids, labels, device="cpu", augment=False):
+    self.device = device
 
-        # Print with fixed-width epoch formatting
-        print(f"Epoch {epoch+1:{width}}/{epochs:{width}} - Train Loss: {train_loss:.5f} - Validation Loss: {val_loss:.5f}")
+    grids = grids.to(device)
+    labels = labels.to(device)
+
+    augmented_grids = [grids]
+    augmented_labels = [labels]
+
+    if augment:
+      # Add 90°, 180°, 270° rotations
+      for k in [1, 2, 3]:
+        rotated = torch.rot90(grids, k=k, dims=(2, 3))
+        augmented_grids.append(rotated)
+        augmented_labels.append(labels)
+
+      # Collect reflections for each existing grid in augmented_grids
+      new_grids = []
+      new_labels = []
+      for g, l in zip(augmented_grids, augmented_labels):
+        # Horizontal flip (x-axis)
+        new_grids.append(torch.flip(g, dims=[2]))
+        new_labels.append(l)
+        # Vertical flip (y-axis)
+        new_grids.append(torch.flip(g, dims=[3]))
+        new_labels.append(l)
+        # Main diagonal (transpose x<->y)
+        new_grids.append(g.transpose(2, 3))
+        new_labels.append(l)
+        # Anti-diagonal (flip + transpose)
+        new_grids.append(torch.flip(g, dims=[2,3]).transpose(2, 3))
+        new_labels.append(l)
+
+      augmented_grids += new_grids
+      augmented_labels += new_labels
+
+    # Concatenate all augmented versions
+    self.data = torch.cat(augmented_grids, dim=0)
+    self.labels = torch.cat(augmented_labels, dim=0)
+
+  def __len__(self):
+    return len(self.labels)
+
+  def __getitem__(self, idx):
+    return self.data[idx], self.labels[idx]
+
+def to_cnn_dataset(grids, attrs, device="cpu", augment=False):
+  data_tensor = torch.tensor(grids, dtype=torch.float32).unsqueeze(1)
+  labels_tensor = torch.tensor(attrs[:, 2], dtype=torch.float32).unsqueeze(1)
+  return IsingDatasetCNN(data_tensor, labels_tensor, device=device, augment=augment)
+
+# ----------------- GNN Dataset -----------------
+class IsingDatasetGNN(Dataset):
+  def __init__(self, grids, attrs, device="cpu"):
+    self.device = device
+    self.N, self.L, _ = grids.shape
+    self.edge_index = self._compute_edges(self.L).to(device)
+
+    self.graphs = []
+    labels_tensor = torch.tensor(attrs[:, 2], dtype=torch.float32).to(device)
+    for idx in range(self.N):
+      x = torch.tensor(grids[idx], dtype=torch.float32).view(-1, 1).to(device)
+      y = labels_tensor[idx].unsqueeze(0)
+      self.graphs.append(Data(x=x, edge_index=self.edge_index, y=y))
+
+  def _compute_edges(self, L):
+    num_nodes = L * L
+    num_edges = num_nodes * 4
+    edges = torch.empty((2, num_edges), dtype=torch.long)
+
+    idx = 0
+    for i in range(L):
+      for j in range(L):
+        node = i * L + j
+        neighbors = [
+          ((i - 1) % L) * L + j,  # up
+          ((i + 1) % L) * L + j,  # down
+          i * L + (j - 1) % L,    # left
+          i * L + (j + 1) % L     # right
+        ]
+        for n in neighbors:
+          edges[0, idx] = node
+          edges[1, idx] = n
+          idx += 1
+    return edges.contiguous()
+
+  def __len__(self):
+    return self.N
+
+  def __getitem__(self, idx):
+    return self.graphs[idx]
+
+def to_gnn_dataset(grids, attrs, device="cpu"):
+  return IsingDatasetGNN(grids, attrs, device=device)
+
+# ----------------- Uniform distribution filter -----------------
+def uniform_filter(data, labels, num_bins=10, seed=42):
+  np.random.seed(seed)
+  bins = np.linspace(0, 1, num_bins + 1)
+  num_to_sample = 100 #len(data)
+  subset_indices = []
+
+  for i in range(num_bins):
+    bin_idx = np.where((labels >= bins[i]) & (labels < bins[i+1]))[0]
+    if len(bin_idx) == 0:
+      continue
+    num_to_sample = min(num_to_sample, len(bin_idx))
+
+  for i in range(num_bins):
+    bin_idx = np.where((labels >= bins[i]) & (labels < bins[i+1]))[0]
+    selected = np.random.choice(bin_idx, size=num_to_sample, replace=False)
+    subset_indices.extend(selected)
+
+  return np.array(subset_indices)
+
+# ----------------- Filter zero committor -----------------
+def filter_zero_committor(grids, attrs):
+  mask = attrs[:, 2] != 0
+  grids_filtered = grids[mask]
+  attrs_filtered = attrs[mask]
+  print(f"Filtered {len(grids) - len(grids_filtered)} grids with committor=0")
+  return grids_filtered, attrs_filtered
 
 def data_to_dataloader(train_ds, valid_ds, bs, model_type="cnn"):
-    """
-    Return DataLoaders for training and validation datasets.
-    
-    Args:
-        train_ds, valid_ds: Dataset objects
-        bs: batch size
-        model_type: "cnn" or "gnn"
-    """
-    if model_type == "cnn":
-        train_dl = TorchDataLoader(train_ds, batch_size=bs, shuffle=True)
-        valid_dl = TorchDataLoader(valid_ds, batch_size=bs)
-    else:  # gnn
-        train_dl = PyGDataLoader(train_ds, batch_size=bs, shuffle=True)
-        valid_dl = PyGDataLoader(valid_ds, batch_size=bs)
-    
-    return train_dl, valid_dl
+  """
+  Return DataLoaders for training and validation datasets.
+  
+  Args:
+      train_ds, valid_ds: Dataset objects
+      bs: batch size
+      model_type: "cnn" or "gnn"
+  """
+  if model_type == "cnn":
+    train_dl = TorchDataLoader(train_ds, batch_size=bs, shuffle=True)
+    valid_dl = TorchDataLoader(valid_ds, batch_size=1)
+  else:  # gnn
+    train_dl = PyGDataLoader(train_ds, batch_size=bs, shuffle=True)
+    valid_dl = PyGDataLoader(valid_ds, batch_size=1)
+  
+  return train_dl, valid_dl
 
-class ResidualCNN(nn.Module):
-	def __init__(self, in_channels, out_channels, kernel_size=3, dilation=1, dropout=0.0):
-		super().__init__()
-		padding = dilation * (kernel_size // 2)
-		self.conv = nn.Conv2d(in_channels, out_channels,
-							  kernel_size=kernel_size,
-							  stride=1, padding=padding,
-							  dilation=dilation, padding_mode="circular")
-		self.dropout = nn.Dropout(dropout)
+def prepare_subset(h5path, uniform_bins=10, test_size=0.2, seed=42):
+  """
+  Load grids and attributes from HDF5 and select a uniform subset.
+  
+  Returns:
+      grids_subset: np.ndarray
+      attrs_subset: np.ndarray
+      subset_indices: np.ndarray
+  """
+  print("Loading full dataset...")
+  grids, attrs = load_hdf5_raw(h5path)
 
-		# Projection if channels differ
-		self.proj = None
-		if in_channels != out_channels:
-			self.proj = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+  np.random.seed(seed)  # ensure reproducibility
 
-	def forward(self, x):
-		identity = x
-		out = F.leaky_relu(self.conv(x))
-		out = self.dropout(out)
-		if self.proj is not None:
-			identity = self.proj(identity)
-		out += identity
-		return F.leaky_relu(out)
+  print("Filtering 0 committor data")
+  grids, attrs = filter_zero_committor(grids, attrs)
 
-class CNN(nn.Module):
-	def __init__(self, input_size=64, channels=16, dropout=0.2,
-				num_cnn_layers=3, num_fc_layers=2):
-		super().__init__()
-		self.input_size = input_size
+  # Split indices BEFORE augmentation
+  num_samples = len(grids)
+  indices = np.arange(num_samples)
+  train_idx, valid_idx = train_test_split(
+    indices, test_size=test_size, random_state=seed, shuffle=True
+  )
 
-		# Single BatchNorm at input
-		self.input_bn = nn.BatchNorm2d(1)
+  return grids, attrs, train_idx, valid_idx
 
-		# CNN residual layers
-		self.cnn_layers = nn.ModuleList()
-		for i in range(num_cnn_layers):
-			in_ch = 1 if i == 0 else channels
-			dilation = 1 if i == 0 else (2**i)
-			self.cnn_layers.append(
-				ResidualCNN(in_ch, channels, dilation=dilation, dropout=dropout)
-			)
+def prepare_datasets(grids, attrs, train_idx, valid_idx, model_type="cnn", device="cpu", batch_size=64, augment=True):
+  """
+  Take grids and attributes with train/valid indices, and produce datasets and dataloaders.
 
-		self.pool = nn.AdaptiveAvgPool2d(1)
+  Returns:
+      train_dl, valid_dl, train_ds, valid_ds
+  """
+  # Create train/validation datasets
+  if model_type.lower() == "cnn":
+    train_ds = to_cnn_dataset(grids[train_idx], attrs[train_idx],
+                              device=device, augment=augment)
+    valid_ds = to_cnn_dataset(grids[valid_idx], attrs[valid_idx],
+                              device=device, augment=False)
+  else:
+    train_ds = to_gnn_dataset(grids[train_idx], attrs[train_idx], device=device)
+    valid_ds = to_gnn_dataset(grids[valid_idx], attrs[valid_idx], device=device)
 
-		# Fully connected residual layers without normalization
-		self.fc_layers = nn.ModuleList()
-		for _ in range(num_fc_layers):
-			self.fc_layers.append(nn.Sequential(
-				nn.Linear(channels, channels),
-				nn.LeakyReLU(),
-				nn.Dropout(dropout)
-			))
+  print(f"Train size: {len(train_ds)}, Validation size: {len(valid_ds)}")
 
-		self.out = nn.Linear(channels, 1)
+  # Create DataLoaders
+  train_dl, valid_dl = data_to_dataloader(train_ds, valid_ds, batch_size,
+                                          model_type=model_type.lower())
+  print(f"DataLoaders created: train_batches={len(train_dl)}, valid_batches={len(valid_dl)}")
 
-	def forward(self, x):
-		# Interpolate to desired input size
-		#x = F.interpolate(x, size=(self.input_size, self.input_size),
-		#				mode="bilinear", align_corners=False)
-
-		#x = self.input_bn(x)  # normalize input once
-
-		for layer in self.cnn_layers:
-			x = layer(x)
-
-		x = self.pool(x)
-		x = x.view(x.size(0), -1)
-
-		for fc in self.fc_layers:
-			identity = x
-			x = identity + fc(x)
-
-		x = self.out(x)
-		return x
-
-class GNN(torch.nn.Module):
-    """
-    Simple GCN for 2D Ising grids.
-    Treat each spin as a node; connect to 4 nearest neighbors (up/down/left/right).
-    """
-    def __init__(self, channels=32, dropout=0.3):
-        super().__init__()
-        self.conv1 = GCNConv(1, channels)
-        self.conv2 = GCNConv(channels, channels)
-        self.dropout = torch.nn.Dropout(dropout)
-        self.fc = torch.nn.Linear(channels, 1)
-
-    def forward(self, data_batch):
-        # data_batch: PyG Batch object with x (node features), edge_index, batch
-        x, edge_index, batch = data_batch.x, data_batch.edge_index, data_batch.batch
-        x = x + F.leaky_relu(self.conv1(x, edge_index))
-        x = self.dropout(x)
-        x = x + F.leaky_relu(self.conv2(x, edge_index))
-        x = self.dropout(x)
-        x = global_mean_pool(x, batch)  # aggregate node features per graph
-        return torch.sigmoid(self.fc(x))
+  return train_dl, valid_dl, train_ds, valid_ds
