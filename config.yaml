@@ -1,0 +1,30 @@
+simulation:
+    L: 64
+    ngrids_factor: 4
+    threads_per_block: 32
+    nsweeps: 5000
+
+parameters:
+    beta: 0.55   # inverse temperature (range: 0.53–0.6)
+    h: 0.082     # external field (range: 0.03–0.1)
+
+output:
+    grid_output_int: 100   # multiple of mag_output_int
+    mag_output_int: 100    # frequency for CV computation
+
+collective_variable:
+    type: "largest_cluster"
+    up_threshold: 3686
+    dn_threshold: 5.5
+
+paths:
+    gridstates: "data/gridstates.hdf5"
+    plot_dir: "figures"
+
+analyse:
+    bins: 100
+    cluster_min: 0
+    cluster_max: 100
+    bin_per_cluster: true   # if true, each cluster size gets one bin
+    cluster_vlines: 20
+    magnetization_xtick_step: 0.1
