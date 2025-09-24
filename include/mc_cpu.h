@@ -22,12 +22,13 @@ typedef struct {
   int initial_spin;  // Spin of the parent phase we're nucleating from
   char* cv;          // Collective variable on which thresholds are defined
   float* result;     // Pointer to result array 
+  char* filename;    // Filename for output of grids to disk
 } mc_function_t;
 
 
 
 // Function typedef obeyed by functions which output/store grids
-typedef int (*GridOutputFunc)(int L, int ngrids, int* grid_data, int isweep, float* magnetisation, float *lclus_size, char *cv, double dn_thr, double up_thr);
+typedef int (*GridOutputFunc)(int L, int ngrids, int* grid_data, int isweep, float* magnetisation, float *lclus_size, char *cv, double dn_thr, double up_thr, char *filename);
 
 // pre-compute acceptance probabilities for spin flips
 void preComputeProbs_cpu(double beta, double h);

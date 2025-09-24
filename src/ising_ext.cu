@@ -254,7 +254,7 @@ PyObject* populate_grids_list(int L, int ngrids, int* grid_data) {
     
 }
 
-int append_grids_list(int L, int ngrids, int* grid_data, int isweep, float* magnetisation, float *lclus_size, char *cv,double dn_thr, double up_thr) {
+int append_grids_list(int L, int ngrids, int* grid_data, int isweep, float* magnetisation, float *lclus_size, char *cv,double dn_thr, double up_thr, char *filename) {
 
   // Update module level lists of magnetisation and largest cluster (if computed)
   float *cv_val;
@@ -333,7 +333,7 @@ int append_grids_list(int L, int ngrids, int* grid_data, int isweep, float* magn
   } // end if recording largest cluster size
 
   // Always call the hdf5 writer
-  int iret = write_ising_grids_hdf5(L, ngrids, grid_data, isweep, magnetisation, lclus_size, cv, dn_thr, up_thr);
+  int iret = write_ising_grids_hdf5(L, ngrids, grid_data, isweep, magnetisation, lclus_size, cv, dn_thr, up_thr, filename);
 
   // If we're maintaining a history of grids in RAM then proceed, otherwise we're done
   if (!grid_history) {
@@ -538,7 +538,7 @@ static PyObject* method_run_nucleation_swarm(PyObject* self, PyObject* args, PyO
 
     mc_grids_t grids; grids.L = L; grids.ngrids = ngrids; grids.ising_grids = ising_grids;
     mc_sampler_t samples; samples.tot_nsweeps = tot_nsweeps; samples.mag_output_int = mag_output_int; samples.grid_output_int = grid_output_int;
-    mc_function_t calc; calc.itask = 0; calc.cv = cv; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold; calc.ninputs = 1; calc.result = result;
+    mc_function_t calc; calc.itask = 0; calc.cv = cv; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold; calc.ninputs = 1; calc.result = result; calc.filename="gridstates.hdf5";
 
     /*=================================
       Write output header 
@@ -546,6 +546,8 @@ static PyObject* method_run_nucleation_swarm(PyObject* self, PyObject* args, PyO
 #ifndef PYTHON
     fprintf(stdout, "# isweep    nucleated fraction\n");
 #endif
+
+    create_ising_grids_hdf5(L, ngrids, tot_nsweeps, h, beta, calc.itask, calc.filename);
     
     // Perform the MC simulations
     //mc_driver_cpu(grids, beta, h, grid_fate, samples, calc, write_ising_grids);
@@ -581,7 +583,7 @@ static PyObject* method_run_nucleation_swarm(PyObject* self, PyObject* args, PyO
     mc_gpu_grids_t grids; grids.L = L; grids.ngrids = ngrids; grids.ising_grids = ising_grids;
     grids.d_ising_grids = d_ising_grids; grids.d_neighbour_list = d_neighbour_list;
     mc_sampler_t samples; samples.tot_nsweeps = tot_nsweeps; samples.mag_output_int = mag_output_int; samples.grid_output_int = grid_output_int;
-    mc_function_t calc; calc.initial_spin = initial_spin; calc.cv = cv; calc.itask = 0; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold; calc.ninputs = 1; calc.result = result;
+    mc_function_t calc; calc.initial_spin = initial_spin; calc.cv = cv; calc.itask = 0; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold; calc.ninputs = 1; calc.result = result; calc.filename="pBgrids.hdf5";
     gpu_run_t gpu_state; gpu_state.d_state = d_state;  gpu_state.threadsPerBlock = threadsPerBlock; gpu_state.gpu_method = gpu_method;
 
     /*=================================
@@ -590,7 +592,8 @@ static PyObject* method_run_nucleation_swarm(PyObject* self, PyObject* args, PyO
 #ifndef PYTHON
     fprintf(stdout, "# isweep    nucleated fraction\n");
 #endif
-    create_ising_grids_hdf5(L, ngrids, tot_nsweeps, h, beta);
+
+    create_ising_grids_hdf5(L, ngrids, tot_nsweeps, h, beta, calc.itask, calc.filename);
     //result = mc_driver_gpu(grids, beta, h, grid_fate, samples, calc, gpu_state, write_ising_grids);
     mc_driver_gpu(grids, beta, h, grid_fate, samples, calc, gpu_state, append_grids_list);
     //mc_driver_gpu(grids, beta, h, grid_fate, samples, calc, gpu_state, write_ising_grids_hdf5);
@@ -801,6 +804,8 @@ static PyObject* method_run_committor_calc(PyObject* self, PyObject* args, PyObj
     fprintf(stdout,"Using CPU\n");
 #endif
 
+
+
     // Initialise host RNG
     init_genrand(rngseed);
 
@@ -811,7 +816,8 @@ static PyObject* method_run_committor_calc(PyObject* self, PyObject* args, PyObj
     mc_sampler_t samples; samples.tot_nsweeps = tot_nsweeps; samples.mag_output_int = mag_output_int; samples.grid_output_int = grid_output_int;
     mc_function_t calc; calc.itask = 1; calc.initial_spin = initial_spin; calc.cv = cv; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold; calc.ninputs = grid_array_count; calc.result=result;
 
-    
+    create_ising_grids_hdf5(L, ngrids, tot_nsweeps, h, beta, calc.itask, calc.filename);
+
     // Perform the MC simulations
     //result = mc_driver_cpu(grids, beta, h, grid_fate, samples, calc, write_ising_grids);
     mc_driver_cpu(grids, beta, h, grid_fate, samples, calc, append_grids_list);
@@ -848,6 +854,7 @@ static PyObject* method_run_committor_calc(PyObject* self, PyObject* args, PyObj
     mc_function_t calc; calc.itask = 1; calc.cv = cv; calc.initial_spin = initial_spin; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold; calc.ninputs = grid_array_count; calc.result=result;
     gpu_run_t gpu_state; gpu_state.d_state = d_state;  gpu_state.threadsPerBlock = threadsPerBlock; gpu_state.gpu_method = gpu_method; 
 
+    create_ising_grids_hdf5(L, ngrids, tot_nsweeps, h, beta, calc.itask, calc.filename);
 
     //result = mc_driver_gpu(grids, beta, h, grid_fate, samples, calc, gpu_state, write_ising_grids);
     mc_driver_gpu(grids, beta, h, grid_fate, samples, calc, gpu_state, append_grids_list);

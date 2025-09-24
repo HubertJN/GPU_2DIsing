@@ -550,6 +550,7 @@ void mc_driver_gpu(mc_gpu_grids_t grids, double beta, double h, int* grid_fate, 
     double up_thr = calc.up_thr;
     int ninputs = calc.ninputs;
     int initial_spin = calc.initial_spin;
+    char *filename = calc.filename;
 
 
     curandState* d_state = gpu_state.d_state;
@@ -641,6 +642,13 @@ void mc_driver_gpu(mc_gpu_grids_t grids, double beta, double h, int* grid_fate, 
       exit(EXIT_FAILURE);
     }
 
+    // Initialise result as nucleated in case code finishes after all reach stable state
+    if (itask==0) {
+      for (igrid=0;igrid<result_size;igrid++){
+        result[igrid] = 1.0;
+      }
+    }
+
     t1 = clock();  // Start Timer
 
     isweep = 0;
@@ -699,7 +707,7 @@ void mc_driver_gpu(mc_gpu_grids_t grids, double beta, double h, int* grid_fate, 
       
       // Writing of the grids can be happening on the host while the device runs the mc_sweep kernel
       if (isweep%grid_output_int==0 || isweep==tot_nsweeps-1){
-        outfunc(L, ngrids, ising_grids, isweep, magnetisation, lclus_size, cv, up_thr, dn_thr);  
+        outfunc(L, ngrids, ising_grids, isweep, magnetisation, lclus_size, cv, up_thr, dn_thr, filename);  
       }
 
       // Write and report cv - can also be happening while the device runs the mc_sweep kernel
@@ -805,13 +813,19 @@ void mc_driver_gpu(mc_gpu_grids_t grids, double beta, double h, int* grid_fate, 
       int ii;
       for (ii=0;ii<ninputs;ii++) {
         int nB = 0;
+        int nF = 0;
         for (int jj=0;jj<sub_ngrids;jj++) {
-          nB += grid_fate[ii*sub_ngrids+jj];
+          if (grid_fate[ii*sub_ngrids+jj] > -1) {
+            nB += grid_fate[ii*sub_ngrids+jj];
+          }
+          else {
+            nF += 1;
+          }
         }
-        calc.result[ii] = (float)nB/(float)sub_ngrids; // Copy result to output array
+        calc.result[ii] = (float)nB/(float)(sub_ngrids-nF); // Copy result to output array
       }
     }
-
+      
     if (result) free(result);
 
 }

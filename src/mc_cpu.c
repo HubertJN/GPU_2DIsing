@@ -124,6 +124,7 @@ void mc_driver_cpu(mc_grids_t grids, double beta, double h, int* grid_fate, mc_s
     double up_thr = calc.up_thr;
     int ninputs = calc.ninputs;
     int initial_spin = calc.initial_spin;
+    char *filename = calc.filename;
 
     // Number of grids per input grid
     if (ngrids % ninputs != 0) {
@@ -171,11 +172,17 @@ void mc_driver_cpu(mc_grids_t grids, double beta, double h, int* grid_fate, mc_s
       fprintf(stderr,"Error: itask must be 0 or 1!\n");
       exit(EXIT_FAILURE);
     }
-    /*result=(float *)malloc(result_size*sizeof(float));
+    result=(float *)malloc(result_size*sizeof(float));
     if (result==NULL) {
       fprintf(stderr,"Error allocating result array!\n");
       exit(EXIT_FAILURE);
-    }*/
+    }
+    // Initialise result as nucleated in case code finishes after all reach stable state
+    if (itask==0) {
+      for (igrid=0;igrid<result_size;igrid++){
+        result[igrid] = 1.0;
+      }
+    }
 
     t1 = clock();  // Start timer
 
@@ -247,7 +254,7 @@ void mc_driver_cpu(mc_grids_t grids, double beta, double h, int* grid_fate, mc_s
 
       // Output grids to file
       if (isweep%grid_output_int==0){
-        outfunc(L, ngrids, ising_grids, isweep, magnetisation, lclus, cv, dn_thr, up_thr);  
+        outfunc(L, ngrids, ising_grids, isweep, magnetisation, lclus, cv, dn_thr, up_thr, filename);  
       }
 
 

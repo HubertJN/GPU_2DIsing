@@ -65,11 +65,11 @@ void read_input_grid(int L, int ngrids, int *ising_grids){
 
 }
 
-int write_ising_grids(int L, int ngrids, int *ising_grids, int isweep, float *magnetisation, float *lclus_size, char *cv, double dn_thr, double up_thr){
+int write_ising_grids(int L, int ngrids, int *ising_grids, int isweep, float *magnetisation, float *lclus_size, char *cv, double dn_thr, double up_thr, char *filename){
 
     // Set filename
-    char filename[15];
-    sprintf(filename, "gridstates.bin");
+    //char filename[15];
+    //sprintf(filename, "gridstates.bin");
     //printf("%s\n",filename);
 
     // open file
@@ -130,8 +130,13 @@ int write_ising_grids(int L, int ngrids, int *ising_grids, int isweep, float *ma
     
 }
 
+<<<<<<< HEAD
 int create_ising_grids_hdf5(int L, int ngrids, int tot_nsweeps, double h, double beta) {
     const char *filename = "data/gridstates.hdf5";
+=======
+int create_ising_grids_hdf5(int L, int ngrids, int tot_nsweeps, double h, double beta, int itask, char* filename) {
+    
+>>>>>>> 599681ad8349dbc2369c2cca0ccb1548e3e9c95b
 
     /* Create HDF5 file */
     hid_t file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
@@ -220,13 +225,8 @@ int create_ising_grids_hdf5(int L, int ngrids, int tot_nsweeps, double h, double
     return 0;
 }
 
-
-int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep,
-                           float *magnetisation, float *lclus_size,
-                           char *cv, double dn_thr, double up_thr) {
-    const char *filename = "data/gridstates.hdf5";
-
-    /* Open the file */
+int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep, float *magnetisation, float *lclus_size, char *cv, double dn_thr, double up_thr, char* filename) {
+    //const char *filename = "gridstates.hdf5";
     hid_t file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
     if (file_id < 0) {
         fprintf(stderr, "Error: cannot open '%s'\n", filename);
