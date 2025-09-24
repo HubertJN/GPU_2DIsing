@@ -85,45 +85,18 @@ def load_into_array(h5path):
         total_saved = int(f['total_saved_grids'][()])
         L = int(f['L'][()])
         nbits = L * L
+        nbytes = (nbits + 7) // 8
 
-        # preallocate final arrays
+        # Read grids and attrs directly
+        raw_grids = f['grids'][()]        # shape: (total_saved, nbytes)
         grids = np.empty((total_saved, L, L), dtype=np.int8)
-        attrs = np.empty((total_saved, 4), dtype=np.float64)
 
-        # list and sort sweep names and inner datasets once
-        sweep_names = sorted((k for k in f.keys() if k.startswith('sweep_')),
-                             key=lambda x: int(re.search(r'\d+', x).group()))
+        for i in range(total_saved):
+            arr = np.frombuffer(raw_grids[i], dtype=np.uint8)
+            bits = np.unpackbits(arr, bitorder='little')[:nbits]
+            grids[i] = (bits.astype(np.int8) * 2 - 1).reshape(L, L)
 
-        idx = 0
-        for sweep_name in sweep_names:
-            grp = f[sweep_name]
-            for dname in sorted(grp.keys(), key=lambda s: int(re.search(r'\d+', s).group())):
-                ds = grp[dname]
-
-                # Read raw bytes and unpack straight into the final grid
-                raw = ds[()]                           # bytes or small array
-                arr = np.frombuffer(raw, dtype=np.uint8)
-                bits = np.unpackbits(arr, bitorder='little')[:nbits]
-                grids[idx] = (bits.astype(np.int8) * 2 - 1).reshape(L, L)
-
-                # Read attrs directly
-                def _read_attr(name):
-                    val = ds.attrs.get(name)
-                    if isinstance(val, bytes):
-                        val = val.decode('utf-8')
-                    return np.nan if val == 'null' else float(val)
-
-                attrs[idx, 0] = _read_attr('magnetisation')
-                attrs[idx, 1] = _read_attr('lclus_size')
-                attrs[idx, 2] = _read_attr('committor')
-                attrs[idx, 3] = _read_attr('committor_error')
-
-                idx += 1
-
-        # if fewer than total_saved were found, trim arrays
-        if idx != total_saved:
-            grids = grids[:idx]
-            attrs = attrs[:idx]
+        attrs = f['attrs'][()]             # shape: (total_saved, 4), doubles
 
     end = time.perf_counter()
     print(f"Loaded {len(grids)} datasets and attributes into memory.")
