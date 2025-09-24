@@ -13,6 +13,11 @@ print("Opening:", h5path)
 
 grids, attrs = load_into_array(h5path)
 
+# --- Prune invalid entries ---
+mask = (attrs[:, 0] != -1) & (attrs[:, 1] != 0)
+grids = grids[mask]
+attrs = attrs[mask]
+
 # --- Attributes array ---
 print(f"Processed {grids.shape[0]} grids. grids.shape={grids.shape}, attrs.shape={attrs.shape}")
 
@@ -25,6 +30,7 @@ plt.hist(magnetizations, bins=config.analyse.bins, color='skyblue', edgecolor='b
 plt.xlabel('Magnetization')
 plt.ylabel('Frequency')
 plt.title('Histogram of Magnetization Values')
+plt.xlim(-1, 1)
 xmin, xmax = plt.xlim()
 plt.xticks(np.arange(round(xmin, 1), round(xmax + 0.1, 1), 0.1))
 plt.tight_layout()
