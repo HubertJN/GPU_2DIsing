@@ -1,8 +1,11 @@
 import numpy as np
 import h5py
 import matplotlib.pyplot as plt
-from tools.utils import load_into_array, save_training_grids
+from tools.utils import load_into_array, save_training_grids, load_config
 import gasp
+
+# --- Load config ---
+config = load_config("config.yaml")
 
 # Load only headers and attributes first
 _, attrs, headers = load_into_array("data/gridstates.hdf5", load_grids=False)
@@ -16,6 +19,8 @@ val_min = 1
 val_max = 400
 num_bins = 256
 max_samples = 1000
+
+gpu_nsms = gasp.gpu_nsms - gasp.gpu_nsms % config.gpu.sm_mult
 
 values = attrs[:, 1]
 mask = (values >= val_min) & (values <= val_max)
@@ -36,7 +41,7 @@ else:
     desired_pdf += 2*1/num_bins
     desired_mass = desired_pdf / desired_pdf.sum()
     total_candidates = len(candidates)
-    gpu_multiple, cap = gasp.gpu_nsms, max_samples
+    gpu_multiple, cap = gpu_nsms, max_samples
     target_samples = min(total_candidates - (total_candidates % gpu_multiple),
                         cap - (cap % gpu_multiple),
                         total_candidates)
@@ -68,7 +73,7 @@ else:
 
     # Ensure final selection is multiple of SMs
     n = len(sample_idx)
-    n_trim = n - (n % gasp.gpu_nsms)
+    n_trim = n - (n % gpu_nsms)
     if n_trim > 0:
         selected_idx = np.linspace(0, n-1, n_trim, dtype=int)
         sample_idx = sample_idx[selected_idx]
