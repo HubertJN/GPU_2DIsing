@@ -19,8 +19,9 @@ nsweeps = headers['tot_nsweeps']
 beta = headers['beta']
 h = headers['h']
 
-ngrids = 4 * gasp.gpu_nsms * 32
-conc_calc = min(int(np.round(ngrids/config.comm.ngrids)), gasp.gpu_nsms)
+gpu_nsms = gasp.gpu_nsms - gasp.gpu_nsms % config.gpu.sm_mult
+ngrids = 4 * gpu_nsms * 32
+conc_calc = min(int(np.round(ngrids/config.comm.ngrids)), gpu_nsms)
 
 dn_threshold = config.collective_variable.dn_threshold
 up_threshold = config.collective_variable.up_threshold
@@ -46,7 +47,9 @@ for start in range(0, len(grids), conc_calc):
             grid_array=gridlist,
             cv=config.collective_variable.type,
             dn_threshold=dn_threshold,
-            up_threshold=up_threshold
+            up_threshold=up_threshold,
+            store_grids=False,
+            nsms=gpu_nsms
         )
     )
 
