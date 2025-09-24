@@ -130,14 +130,8 @@ int write_ising_grids(int L, int ngrids, int *ising_grids, int isweep, float *ma
     
 }
 
-<<<<<<< HEAD
-int create_ising_grids_hdf5(int L, int ngrids, int tot_nsweeps, double h, double beta) {
-    const char *filename = "data/gridstates.hdf5";
-=======
 int create_ising_grids_hdf5(int L, int ngrids, int tot_nsweeps, double h, double beta, int itask, char* filename) {
     
->>>>>>> 599681ad8349dbc2369c2cca0ccb1548e3e9c95b
-
     /* Create HDF5 file */
     hid_t file_id = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
     if (file_id < 0) {
