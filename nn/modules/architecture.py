@@ -1,139 +1,165 @@
+import time
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
 import numpy as np
 from torch_geometric.nn import GCNConv, global_mean_pool
 
-def loss_batch(model, loss_func, physics_loss, xb, yb, opt=None):
-  loss = loss_func(model(xb), yb)
-  loss += physics_loss
 
-  if opt is not None:
-    loss.backward()
-    opt.step()
-    opt.zero_grad()
-  return loss.item(), len(xb)
+def loss_batch(model, loss_func, physics_loss, xb, yb, opt=None):
+    loss = loss_func(model(xb), yb)
+    loss += physics_loss
+
+    if opt is not None:
+        loss.backward()
+        opt.step()
+        opt.zero_grad()
+    return loss.item(), len(xb)
+
 
 def physics_func(model, xb, one, zero):
-  loss = 0
-  constant = 0.1
-  #loss += constant * (model(zero).mean()) ** 2
-  #loss += constant * ((model(one) - 1).mean()) ** 2
-  return loss
+    loss = 0
+    constant = 0.1
+    #loss += constant * (model(zero).mean()) ** 2
+    #loss += constant * ((model(one) - 1).mean()) ** 2
+    return loss
+
 
 def fit(epochs, model, loss_func, physics_func, opt, train_dl, valid_dl, device="cpu"):
-  zero = torch.zeros([64,64], dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
-  one = torch.ones([64,64], dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
+    zero = torch.zeros([64, 64], dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
+    one = torch.ones([64, 64], dtype=torch.float32).to(device).unsqueeze(0).unsqueeze(0)
 
-  width = max(4, len(str(epochs)))  # determine width for epoch numbers
+    width = max(4, len(str(epochs)))  # determine width for epoch numbers
 
-  for epoch in range(epochs):
-    # --- Training ---
-    model.train()
-    train_losses = []
-    for xb, yb in train_dl:
-      loss_val, n = loss_batch(model, loss_func, physics_func(model, xb, one, zero), xb, yb, opt)
-      train_losses.append((loss_val, n))
+    total_start = time.perf_counter()
 
-    train_vals, train_counts = zip(*train_losses)
-    train_loss = np.sum(np.multiply(train_vals, train_counts)) / np.sum(train_counts)
+    for epoch in range(epochs):
+        epoch_start = time.perf_counter()
 
-    # --- Validation ---
-    model.eval()
-    with torch.no_grad():
-      val_losses = [loss_batch(model, loss_func, physics_func(model, xb, one, zero), xb, yb) for xb, yb in valid_dl]
-      val_vals, val_counts = zip(*val_losses)
-      val_loss = np.sum(np.multiply(val_vals, val_counts)) / np.sum(val_counts)
+        # --- Training ---
+        model.train()
+        train_losses = []
+        for xb, yb in train_dl:
+            xb, yb = xb.to(device), yb.to(device)
+            loss_val, n = loss_batch(model, loss_func, physics_func(model, xb, one, zero), xb, yb, opt)
+            train_losses.append((loss_val, n))
 
-    print(f"Epoch {epoch+1:{width}}/{epochs:{width}} - Train Loss: {train_loss:.5f} - Validation Loss: {val_loss:.5f}")
+        train_vals, train_counts = zip(*train_losses)
+        train_loss = np.sum(np.multiply(train_vals, train_counts)) / np.sum(train_counts)
+
+        # --- Validation ---
+        model.eval()
+        with torch.no_grad():
+            val_losses = [
+                loss_batch(model, loss_func, physics_func(model, xb.to(device), one, zero), xb.to(device), yb.to(device))
+                for xb, yb in valid_dl
+            ]
+            val_vals, val_counts = zip(*val_losses)
+            val_loss = np.sum(np.multiply(val_vals, val_counts)) / np.sum(val_counts)
+
+        epoch_time = time.perf_counter() - epoch_start
+        print(f"Epoch {epoch+1:{width}}/{epochs:{width}} - "
+              f"Train Loss: {train_loss:.5f} - Validation Loss: {val_loss:.5f} - "
+              f"Time: {epoch_time:.2f}s")
+
+    total_time = time.perf_counter() - total_start
+    print(f"Total training time: {total_time:.2f}s")
+
 
 class ResidualCNN(nn.Module):
-  def __init__(self, in_channels, out_channels, kernel_size=3, dilation=1, dropout=0.0):
-    super().__init__()
-    padding = dilation * (kernel_size // 2)
-    self.conv = nn.Conv2d(in_channels, out_channels,
-                          kernel_size=kernel_size,
-                          stride=1, padding=padding,
-                          dilation=dilation, padding_mode="circular")
-    self.dropout = nn.Dropout(dropout)
+    def __init__(self, in_channels, out_channels, kernel_size=3, dilation=1, dropout=0.0):
+        super().__init__()
+        padding = dilation * (kernel_size // 2)
+        self.conv = nn.Conv2d(
+            in_channels, out_channels,
+            kernel_size=kernel_size,
+            stride=1, padding=padding,
+            dilation=dilation, padding_mode="circular"
+        )
+        self.dropout = nn.Dropout(dropout)
 
-    # Projection if channels differ
-    self.proj = None
-    if in_channels != out_channels:
-      self.proj = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+        # Projection if channels differ
+        self.proj = None
+        if in_channels != out_channels:
+            self.proj = nn.Conv2d(in_channels, out_channels, kernel_size=1)
 
-  def forward(self, x):
-    identity = x
-    out = F.leaky_relu(self.conv(x))
-    out = self.dropout(out)
-    if self.proj is not None:
-      identity = self.proj(identity)
-    out += identity
-    return F.leaky_relu(out)
+    def forward(self, x):
+        identity = x
+        out = F.leaky_relu(self.conv(x))
+        out = self.dropout(out)
+        if self.proj is not None:
+            identity = self.proj(identity)
+        out += identity
+        return F.leaky_relu(out)
+
 
 class CNN(nn.Module):
-  def __init__(self, input_size=64, channels=16, dropout=0.2,
-               num_cnn_layers=3, num_fc_layers=2):
-    super().__init__()
-    self.input_size = input_size
+    def __init__(self, input_size=64, channels=16, dropout=0.2,
+                 num_cnn_layers=3, num_fc_layers=2):
+        super().__init__()
+        self.input_size = input_size
 
-    self.input_bn = nn.BatchNorm2d(1)
+        self.input_bn = nn.BatchNorm2d(1)
 
-    # CNN residual layers
-    self.cnn_layers = nn.ModuleList()
-    for i in range(num_cnn_layers):
-      in_ch = 1 if i == 0 else channels
-      dilation = 1 if i == 0 else (2**i)
-      self.cnn_layers.append(
-        ResidualCNN(in_ch, channels, dilation=dilation, dropout=dropout)
-      )
+        # CNN residual layers
+        self.cnn_layers = nn.ModuleList()
+        for i in range(num_cnn_layers):
+            in_ch = 1 if i == 0 else channels
+            dilation = 1 if i == 0 else (2 ** i)
+            self.cnn_layers.append(
+                ResidualCNN(in_ch, channels, dilation=dilation, dropout=dropout)
+            )
 
-    self.pool = nn.AdaptiveAvgPool2d(1)
+        self.pool = nn.AdaptiveAvgPool2d(1)
 
-    # Fully connected residual layers
-    self.fc_layers = nn.ModuleList()
-    for _ in range(num_fc_layers):
-      self.fc_layers.append(nn.Sequential(
-        nn.Linear(channels, channels),
-        nn.LeakyReLU(),
-        nn.Dropout(dropout)
-      ))
+        # Fully connected residual layers
+        self.fc_layers = nn.ModuleList()
+        for _ in range(num_fc_layers):
+            self.fc_layers.append(nn.Sequential(
+                nn.Linear(channels, channels),
+                nn.LeakyReLU(),
+                nn.Dropout(dropout)
+            ))
 
-    self.out = nn.Linear(channels, 1)
+        self.out = nn.Linear(channels, 1)
 
-  def forward(self, x):
-    x = self.input_bn(x)
+    def forward(self, x):
+        x = self.input_bn(x)
 
-    for layer in self.cnn_layers:
-      x = layer(x)
+        for layer in self.cnn_layers:
+            x = layer(x)
 
-    x = self.pool(x)
-    x = x.view(x.size(0), -1)
+        x = self.pool(x)
+        x = x.view(x.size(0), -1)
 
-    for fc in self.fc_layers:
-      identity = x
-      x = identity + fc(x)
+        for fc in self.fc_layers:
+            identity = x
+            x = identity + fc(x)
 
-    x = self.out(x)
-    return torch.clamp(x, 0, 1)
+        x = self.out(x)
 
-class GNN(torch.nn.Module):
-  """
-  Simple GCN for 2D Ising grids.
-  Treat each spin as a node; connect to 4 nearest neighbors (up/down/left/right).
-  """
-  def __init__(self, channels=32, dropout=0.3):
-    super().__init__()
-    self.conv1 = GCNConv(1, channels)
-    self.conv2 = GCNConv(channels, channels)
-    self.dropout = torch.nn.Dropout(dropout)
-    self.fc = torch.nn.Linear(channels, 1)
+        if not self.training:  # clamp only in eval mode
+            x = torch.clamp(x, 0, 1)
+        return x
 
-  def forward(self, data_batch):
-    x, edge_index, batch = data_batch.x, data_batch.edge_index, data_batch.batch
-    x = x + F.leaky_relu(self.conv1(x, edge_index))
-    x = self.dropout(x)
-    x = x + F.leaky_relu(self.conv2(x, edge_index))
-    x = self.dropout(x)
-    x = global_mean_pool(x, batch)
-    return torch.sigmoid(self.fc(x))
+
+class GNN(nn.Module):
+    """
+    Simple GCN for 2D Ising grids.
+    Treat each spin as a node; connect to 4 nearest neighbors (up/down/left/right).
+    """
+    def __init__(self, channels=32, dropout=0.3):
+        super().__init__()
+        self.conv1 = GCNConv(1, channels)
+        self.conv2 = GCNConv(channels, channels)
+        self.dropout = nn.Dropout(dropout)
+        self.fc = nn.Linear(channels, 1)
+
+    def forward(self, data_batch):
+        x, edge_index, batch = data_batch.x, data_batch.edge_index, data_batch.batch
+        x = x + F.leaky_relu(self.conv1(x, edge_index))
+        x = self.dropout(x)
+        x = x + F.leaky_relu(self.conv2(x, edge_index))
+        x = self.dropout(x)
+        x = global_mean_pool(x, batch)
+        return torch.sigmoid(self.fc(x))

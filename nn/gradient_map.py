@@ -22,19 +22,19 @@ model_type = config.model.type.lower()
 # --- Load full dataset ---
 grids, attrs, train_idx, valid_idx = prepare_subset(h5path, test_size=test_size)
 train_dl, valid_dl, train_ds, valid_ds = prepare_datasets(
-  grids, attrs, train_idx, valid_idx,
-  model_type, device,
-  batch_size,
-  augment=config.dataset.augment
+    grids, attrs, train_idx, valid_idx,
+    model_type, device,
+    batch_size,
+    augment=config.dataset.augment
 )
 
 # --- Load trained CNN model ---
 model = CNN(
-  input_size=config.model.input_size,
-  channels=config.model.channels,
-  num_cnn_layers=config.model.num_cnn_layers,
-  num_fc_layers=config.model.num_fc_layers,
-  dropout=config.model.dropout
+    input_size=config.model.input_size,
+    channels=config.model.channels,
+    num_cnn_layers=config.model.num_cnn_layers,
+    num_fc_layers=config.model.num_fc_layers,
+    dropout=config.model.dropout
 ).to(device)
 model.load_state_dict(torch.load(f"{config.paths.save_dir}/{config.model.type}.pth", map_location=device))
 model.eval()
@@ -90,12 +90,15 @@ plt.savefig(f"{config.paths.plot_dir}/{config.model.type}_saliency.pdf")
 print(f"Saved saliency plot to {config.paths.plot_dir}/{config.model.type}_saliency.pdf")
 plt.close()
 
-# --- Sigmoid fit ---
+# --- Sigmoid fit with error bars ---
 train_cluster_size = attrs[:,1][train_idx]
 train_committor = attrs[:,2][train_idx]
+train_error = attrs[:,3][train_idx]  # committor error
 
 def sigmoid(x, k, x0):
-  return 1 / (1 + np.exp(-k * (x - x0)))
+    base = 1 / (1 + np.exp(-k * (x - x0)))
+    base0 = 1 / (1 + np.exp(k * x0))  # logistic value at x=0
+    return (base - base0) / (1 - base0)
 
 popt, _ = curve_fit(sigmoid, train_cluster_size, train_committor,
                     p0=[0.1, np.median(train_committor)], maxfev=10000)
@@ -104,7 +107,10 @@ x_fit = np.linspace(train_cluster_size.min(), train_cluster_size.max(), 200)
 y_fit = sigmoid(x_fit, *popt)
 
 plt.figure(figsize=(6,6))
-plt.scatter(train_cluster_size, train_committor, s=5, alpha=0.5, label="Training Data")
+plt.errorbar(
+    train_cluster_size, train_committor, yerr=train_error, 
+    fmt='o', ms=3, alpha=0.5, label="Training Data", ecolor='gray', capsize=2
+)
 plt.plot(x_fit, y_fit, color='red', linewidth=2, label="Sigmoid Fit")
 plt.vlines(7, 0, 1, linestyle="dashed", color="grey")
 plt.xlabel("Largest Cluster Size")
@@ -114,15 +120,16 @@ plt.legend()
 plt.tight_layout()
 plt.xlim(-25, 300)
 plt.savefig(f"{config.paths.plot_dir}/sigmoid_cluster.pdf")
-print(f"Saved cluster size vs committor plot to {config.paths.plot_dir}/sigmoid_cluster.pdf")
+print(f"Saved cluster size vs committor plot with error bars to {config.paths.plot_dir}/sigmoid_cluster.pdf")
 plt.close()
+
 
 # --- CNN Predictions on validation set ---
 y_valid = np.array([valid_ds[i][1].item() for i in range(len(valid_ds))])
 x_valid = torch.stack([valid_ds[i][0] for i in range(len(valid_ds))]).to(device)
 
 with torch.no_grad():
-  predictions = model(x_valid).squeeze().cpu().numpy()
+    predictions = model(x_valid).squeeze().cpu().numpy()
 
 rmse = np.sqrt(np.mean((predictions - y_valid) ** 2))
 
