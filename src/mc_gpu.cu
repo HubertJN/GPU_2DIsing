@@ -624,11 +624,11 @@ void mc_driver_gpu(mc_gpu_grids_t grids, double beta, double h, int* grid_fate, 
     int sweeps_per_call;
     sweeps_per_call = mag_output_int < grid_output_int ? mag_output_int : grid_output_int;
 
-    // result - either fraction of nucleated trajectories (itask=0) or comittor(s) (itask=1)
+    // result - either fraction of nucleated trajectories at each snapshot (itask=0) or comittor(s) (itask=1)
     float *result;
     int result_size;
     if (itask==0) {
-      result_size = 1;
+      result_size = tot_nsweeps/mag_output_int;
     } else if (itask==1) {
       result_size = ninputs;
     } else {
@@ -713,7 +713,7 @@ void mc_driver_gpu(mc_gpu_grids_t grids, double beta, double h, int* grid_fate, 
           for (igrid=0;igrid<ngrids;igrid++){
             if ( colvar[igrid] > up_thr ) nnuc++;
           }
-          result[0] = (float)((double)nnuc/(double)ngrids);
+          result[isweep/mag_output_int] = (float)((double)nnuc/(double)ngrids);
 #ifndef PYTHON
           fprintf(stdout, "%10d  %12.6f\n",isweep, (double)nnuc/(double)ngrids);
           fflush(stdout);
@@ -797,8 +797,10 @@ void mc_driver_gpu(mc_gpu_grids_t grids, double beta, double h, int* grid_fate, 
     if (d_lclus) gpuErrchk( cudaFree(d_lclus) );
     if (d_work) gpuErrchk( cudaFree(d_work) );
 
-    if (itask==0) { // Just result the fraction of nucleated grids
-      *calc.result = result[0];
+    if (itask==0) { // Fraction of nucleated grids
+      for (int i = 0; i < result_size; i++) {
+        calc.result[i] = result[i];
+      }
     } else if (itask==1) { // Compute the committor(s)
       int ii;
       for (ii=0;ii<ninputs;ii++) {
@@ -809,5 +811,7 @@ void mc_driver_gpu(mc_gpu_grids_t grids, double beta, double h, int* grid_fate, 
         calc.result[ii] = (float)nB/(float)sub_ngrids; // Copy result to output array
       }
     }
+
+    if (result) free(result);
 
 }

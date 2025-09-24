@@ -164,7 +164,7 @@ void mc_driver_cpu(mc_grids_t grids, double beta, double h, int* grid_fate, mc_s
     float *result;
     int result_size;
     if (itask==0) {
-      result_size = 1;
+      result_size = tot_nsweeps/mag_output_int;
     } else if (itask==1) {
       result_size = ninputs;
     } else {
@@ -204,7 +204,7 @@ void mc_driver_cpu(mc_grids_t grids, double beta, double h, int* grid_fate, mc_s
           PySys_WriteStdout("\r Sweep : %10d, Reached cv = %6.2f : %4d , Unresolved : %4d",
             isweep, nnuc, up_thr, ngrids-nnuc );
 #endif
-          result[0] = (float)((double)nnuc/(double)ngrids);
+          result[isweep/mag_output_int] = (float)((double)nnuc/(double)ngrids);
 	  if (nnuc==ngrids) break; // Stop if everyone has nucleated
 	  
         } else if ( itask == 1 ){
@@ -274,8 +274,10 @@ void mc_driver_cpu(mc_grids_t grids, double beta, double h, int* grid_fate, mc_s
     free(magnetisation);  
     if (lclus) free(lclus);
 
-    if (itask==0) { // Just result the fraction of nucleated grids
-      *calc.result = result[0];
+    if (itask==0) { // Fraction of nucleated grids
+      for (int i = 0; i < result_size; i++) {
+        calc.result[i] = result[i];
+      }
     } else if (itask==1) { // Compute the committor(s)
       int ii;
       for (ii=0;ii<ninputs;ii++) {
@@ -286,6 +288,8 @@ void mc_driver_cpu(mc_grids_t grids, double beta, double h, int* grid_fate, mc_s
         calc.result[ii] = (float)nB/(float)sub_ngrids; // Copy result to output array
       }
     }
+
+    if (result) free(result);
 
 
 }
