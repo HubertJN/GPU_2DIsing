@@ -33,3 +33,6 @@ analyse:
     bin_per_cluster: true   # if true, each cluster size gets one bin
     cluster_vlines: 20
     magnetization_xtick_step: 0.1
+
+gpu:
+    sm_mult: 4
