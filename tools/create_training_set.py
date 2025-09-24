@@ -66,6 +66,13 @@ else:
         chosen.append(sel)
     sample_idx = np.hstack(chosen) if chosen else np.array([], dtype=int)
 
+    # Ensure final selection is multiple of SMs
+    n = len(sample_idx)
+    n_trim = n - (n % gasp.gpu_nsms)
+    if n_trim > 0:
+        selected_idx = np.linspace(0, n-1, n_trim, dtype=int)
+        sample_idx = sample_idx[selected_idx]
+
 if sample_idx.size > 0:
     # Sort idx into increasing order
     sample_idx = np.sort(sample_idx)
