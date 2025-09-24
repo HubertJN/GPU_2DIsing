@@ -23,6 +23,8 @@ gpu_nsms = gasp.gpu_nsms - gasp.gpu_nsms % config.gpu.sm_mult
 ngrids = 4 * gpu_nsms * 32
 conc_calc = min(int(np.round(ngrids/config.comm.ngrids)), gpu_nsms)
 
+print(f"Running {conc_calc} concurrent calculation on {ngrids} grids")
+
 dn_threshold = config.collective_variable.dn_threshold
 up_threshold = config.collective_variable.up_threshold
 
