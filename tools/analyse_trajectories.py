@@ -11,7 +11,7 @@ plot_dir = config.paths.plot_dir
 
 print("Opening:", h5path)
 
-grids, attrs = load_into_array(h5path)
+grids, attrs, _ = load_into_array(h5path)
 
 # --- Prune invalid entries ---
 mask = (attrs[:, 0] != -1) & (attrs[:, 1] != 0)

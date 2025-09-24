@@ -37,44 +37,7 @@ def magnetisation(grid):
 def index(isnap, igrid):
     grid_idx = isnap*ngrids + igrid
     return grid_idx
-
-def write_training_hdf5(outpath, grids, attrs, L):
-    """Append grids and attrs into outpath HDF5 file, creating it if missing.
-
-    If the file exists, ensure header L matches, read current total_saved_grids,
-    and append new datasets named grid_<n> with increasing indices.
-    """
-    # Open file for read/write/create
-    with h5py.File(outpath, 'a') as fo:
-        # If 'L' doesn't exist create it; otherwise ensure it matches
-        if 'L' not in fo:
-            fo.create_dataset('L', data=np.int32(L))
-        else:
-            existing_L = int(fo['L'][()])
-            if existing_L != L:
-                raise ValueError(f"Existing L={existing_L} does not match provided L={L}")
-
-        # Determine starting index from total_saved_grids
-        if 'total_saved_grids' in fo:
-            start = int(fo['total_saved_grids'][()])
-        else:
-            fo.create_dataset('total_saved_grids', data=np.int32(0))
-            start = 0
-
-        names = ['magnetisation', 'lclus_size', 'committor', 'committor_error']
-        for i in range(grids.shape[0]):
-            idx = start + i
-            dset = fo.create_dataset(f'grid_{idx}', data=grids[i].astype(np.int8))
-            for j, name in enumerate(names):
-                val = attrs[i, j]
-                if np.isnan(val):
-                    dset.attrs[name] = 'null'
-                else:
-                    dset.attrs[name] = float(val)
-
-        # update total_saved_grids
-        fo['total_saved_grids'][()] = np.int32(start + grids.shape[0])
-        
+       
 # Function to compute magnetisation
 def magnetisation(grid):
     return np.sum(grid)/len(grid)**2
@@ -82,13 +45,12 @@ def magnetisation(grid):
 def load_into_array(h5path):
     start = time.perf_counter()
     with h5py.File(h5path, "r") as f:
-        total_saved = int(f['total_saved_grids'][()])
-        L = int(f['L'][()])
+        total_saved = int(f['total_saved_grids'][()]) if 'total_saved_grids' in f else 0
+        L = int(f['L'][()]) if 'L' in f else 0
         nbits = L * L
         nbytes = (nbits + 7) // 8
 
-        # Read grids and attrs directly
-        raw_grids = f['grids'][()]        # shape: (total_saved, nbytes)
+        raw_grids = f['grids'][()] if 'grids' in f else np.empty((0, nbytes), dtype=np.uint8)
         grids = np.empty((total_saved, L, L), dtype=np.int8)
 
         for i in range(total_saved):
@@ -96,9 +58,28 @@ def load_into_array(h5path):
             bits = np.unpackbits(arr, bitorder='little')[:nbits]
             grids[i] = (bits.astype(np.int8) * 2 - 1).reshape(L, L)
 
-        attrs = f['attrs'][()]             # shape: (total_saved, 4), doubles
+        header_keys = [key for key in f.keys() if key not in ('grids', 'attrs')]
+        headers = {key: f[key][()] for key in header_keys}
+
+        attrs = f['attrs'][()] if 'attrs' in f else np.empty((total_saved, 0))
 
     end = time.perf_counter()
     print(f"Loaded {len(grids)} datasets and attributes into memory.")
     print(f"Elapsed time: {end - start:.2f} s")
-    return grids, attrs
+    return grids, attrs, headers
+
+def save_training_grids(outpath, sample_grids, sample_attrs, headers):
+    with h5py.File(outpath, "w") as fo:
+        for key, val in headers.items():
+            if key == 'total_saved_grids':
+                continue
+            fo.create_dataset(key, data=val)
+        fo.create_dataset('total_saved_grids', data=len(sample_grids))
+        L = sample_grids[0].shape[0]
+        nbytes = (L*L + 7)//8
+        packed_grids = np.empty((len(sample_grids), nbytes), dtype=np.uint8)
+        for i, g in enumerate(sample_grids):
+            bits = (g.flatten() > 0).astype(np.uint8)
+            packed_grids[i] = np.packbits(bits, bitorder='little')
+        fo.create_dataset('grids', data=packed_grids)
+        fo.create_dataset('attrs', data=sample_attrs)
