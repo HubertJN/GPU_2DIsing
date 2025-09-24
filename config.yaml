@@ -2,7 +2,11 @@ simulation:
     L: 64
     ngrids_factor: 4
     threads_per_block: 32
-    nsweeps: 5000
+    nsweeps: 50000
+
+comm:
+    nsweeps: 50000
+    ngrids: 4000
 
 parameters:
     beta: 0.55   # inverse temperature (range: 0.53–0.6)
@@ -19,6 +23,7 @@ collective_variable:
 
 paths:
     gridstates: "data/gridstates.hdf5"
+    training: "data/gridstates_training.hdf5"
     plot_dir: "figures"
 
 analyse:
