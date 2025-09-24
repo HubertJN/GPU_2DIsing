@@ -23,5 +23,6 @@ frac = gasp.run_nucleation_swarm(
     mag_output_int=mag_output_int,
     cv=config.collective_variable.type,
     up_threshold=config.collective_variable.up_threshold,
-    dn_threshold=config.collective_variable.up_threshold
+    dn_threshold=config.collective_variable.up_threshold,
+    keep_grids=False
 )

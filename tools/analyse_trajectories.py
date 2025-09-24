@@ -11,15 +11,14 @@ plot_dir = config.paths.plot_dir
 
 print("Opening:", h5path)
 
-grids, attrs, _ = load_into_array(h5path)
+_, attrs, _ = load_into_array(h5path, load_grids=False)
 
 # --- Prune invalid entries ---
 mask = (attrs[:, 0] != -1) & (attrs[:, 1] != 0)
-grids = grids[mask]
 attrs = attrs[mask]
 
 # --- Attributes array ---
-print(f"Processed {grids.shape[0]} grids. grids.shape={grids.shape}, attrs.shape={attrs.shape}")
+print(f"Processed {attrs.shape[0]} attributes.")
 
 magnetizations = attrs[:, 0]
 cluster = attrs[:, 1]

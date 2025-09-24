@@ -42,7 +42,7 @@ def index(isnap, igrid):
 def magnetisation(grid):
     return np.sum(grid)/len(grid)**2
 
-def load_into_array(h5path):
+def load_into_array(h5path, load_grids=True, indices=None):
     start = time.perf_counter()
     with h5py.File(h5path, "r") as f:
         total_saved = int(f['total_saved_grids'][()]) if 'total_saved_grids' in f else 0
@@ -50,23 +50,40 @@ def load_into_array(h5path):
         nbits = L * L
         nbytes = (nbits + 7) // 8
 
-        raw_grids = f['grids'][()] if 'grids' in f else np.empty((0, nbytes), dtype=np.uint8)
-        grids = np.empty((total_saved, L, L), dtype=np.int8)
-
-        for i in range(total_saved):
-            arr = np.frombuffer(raw_grids[i], dtype=np.uint8)
-            bits = np.unpackbits(arr, bitorder='little')[:nbits]
-            grids[i] = (bits.astype(np.int8) * 2 - 1).reshape(L, L)
+        if load_grids and 'grids' in f:
+            if indices is None:
+                raw_grids = f['grids'][()]
+                grids = np.empty((total_saved, L, L), dtype=np.int8)
+                for i in range(total_saved):
+                    arr = np.frombuffer(raw_grids[i], dtype=np.uint8)
+                    bits = np.unpackbits(arr, bitorder='little')[:nbits]
+                    grids[i] = (bits.astype(np.int8) * 2 - 1).reshape(L, L)
+            else:
+                grids = []
+                for idx in indices:
+                    arr = np.frombuffer(f['grids'][idx], dtype=np.uint8)
+                    bits = np.unpackbits(arr, bitorder='little')[:nbits]
+                    grids.append((bits.astype(np.int8) * 2 - 1).reshape(L, L))
+        else:
+            grids = np.empty((0, L, L), dtype=np.int8)
 
         header_keys = [key for key in f.keys() if key not in ('grids', 'attrs')]
         headers = {key: f[key][()] for key in header_keys}
 
-        attrs = f['attrs'][()] if 'attrs' in f else np.empty((total_saved, 0))
+        if indices is None:
+            attrs = f['attrs'][()] if 'attrs' in f else np.empty((total_saved, 0))
+        else:
+            attrs = f['attrs'][indices] if 'attrs' in f else np.empty((len(indices), 0))
 
     end = time.perf_counter()
-    print(f"Loaded {len(grids)} datasets and attributes into memory.")
+    if load_grids:
+        print(f"Loaded {len(grids)} grids and attributes into memory.")
+    else:
+        print(f"Loaded headers and attributes for {len(attrs)} entries.")
     print(f"Elapsed time: {end - start:.2f} s")
     return grids, attrs, headers
+
+
 
 def save_training_grids(outpath, sample_grids, sample_attrs, headers):
     with h5py.File(outpath, "w") as fo:
