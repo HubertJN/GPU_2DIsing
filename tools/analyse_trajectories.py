@@ -48,9 +48,6 @@ plt.ylabel('Frequency')
 plt.title('Histogram of Cluster Values')
 plt.xlim(cluster_min - 0.5, cluster_max + 0.5)
 
-for x in range(config.analyse.cluster_vlines + 1):
-    plt.axvline(x=x + 0.5, color='red', linestyle='--', lw=0.5)
-
 plt.tight_layout()
 plt.savefig(f"{plot_dir}/cluster_hist.pdf")
 plt.close()
