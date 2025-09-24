@@ -647,19 +647,30 @@ static PyObject* method_run_committor_calc(PyObject* self, PyObject* args, PyObj
   int keep_grids = 1;
   int threadsPerBlock = 32;
   int gpu_method = 0;
+  int nsms = gpu_nsms;
   const char* grid_input = "gridstates.bin";
   PyObject* grid_array_obj = NULL;
   char* cv = "magnetisation";
 
+
+
   static char* kwlist[] = {"L", "ngrid", "tot_nsweeps", "beta", "h",
     "initial_spin", "cv", "up_threshold", "dn_threshold", "mag_output_int",
-    "grid_output_int", "keep_grids", "threadsPerBlock", "gpu_method", "grid_input", "grid_array", NULL};
+    "grid_output_int", "keep_grids", "threadsPerBlock", "gpu_method", "grid_input", "grid_array", "nsms", NULL};
 
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "iiidd|isddiipiisO", kwlist,
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "iiidd|isddiipiisOi", kwlist,
        &L, &ngrids, &tot_nsweeps, &beta, &h, &initial_spin, &cv,
        &up_threshold, &dn_threshold, &mag_output_int,
-       &grid_output_int, &keep_grids, &threadsPerBlock, &gpu_method, &grid_input, &grid_array_obj)) {
+       &grid_output_int, &keep_grids, &threadsPerBlock, &gpu_method, &grid_input, &grid_array_obj, &nsms)) {
     return NULL;
+  }
+
+  // Validate nsms argument
+  if (nsms < 0) {
+    PyErr_SetString(PyExc_ValueError, "nsms must be a non-negative integer");
+    return NULL;
+  } else {
+    gpu_nsms = nsms;
   }
 
   // Validate cv argument
