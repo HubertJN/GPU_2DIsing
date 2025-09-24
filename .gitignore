@@ -4,3 +4,7 @@ gridstates.dat
 .vscode
 *workspace
 *~
+tool/__pychache__/*
+committor-predictor
+data/*
+figures/*
