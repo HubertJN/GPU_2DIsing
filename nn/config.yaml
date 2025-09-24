@@ -1,25 +1,25 @@
 paths:
-  data: "training_gridstates.hdf5"
-  save_dir: "models"
-  plot_dir: "figures"
+    data: "training_gridstates.hdf5"
+    save_dir: "models"
+    plot_dir: "figures"
 
 dataset:
-  test_size: 0.2
-  batch_size: 64
-  augment: true
-  uniform_bins: 10
+    test_size: 0.2
+    batch_size: 256
+    augment: true
+    uniform_bins: 10
 
 training:
-  epochs: 8
-  lr: 0.001
-  weight_decay: 0.0001
-  loss: "SmoothL1Loss"
-  optimizer: "AdamW"
+    epochs: 128
+    lr: 0.001
+    weight_decay: 0.0001
+    loss: "SmoothL1Loss"
+    optimizer: "AdamW"
 
 model:
-  type: "cnn"
-  input_size: 64
-  channels: 16
-  num_cnn_layers: 4
-  num_fc_layers: 1
-  dropout: 0.1
+    type: "cnn"
+    input_size: 128
+    channels: 16
+    num_cnn_layers: 4
+    num_fc_layers: 1
+    dropout: 0.2
