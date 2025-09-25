@@ -50,7 +50,7 @@ for start in range(0, len(grids), conc_calc):
             cv=config.collective_variable.type,
             dn_threshold=dn_threshold,
             up_threshold=up_threshold,
-            store_grids=False,
+            keep_grids=False,
             nsms=gpu_nsms
         )
     )
