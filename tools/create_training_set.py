@@ -1,14 +1,11 @@
 import numpy as np
 import h5py
 import matplotlib.pyplot as plt
-from tools.utils import load_into_array, save_training_grids, load_config
+from tools.utils import load_into_array, save_training_grids
 import gasp
 
-# --- Load config ---
-config = load_config("config.yaml")
-
 # Load only headers and attributes first
-_, attrs, headers = load_into_array("data/gridstates.hdf5", load_grids=False)
+grids, attrs, headers = load_into_array("data/gridstates.hdf5", load_grids=True)
 
 target_val = 80
 tolerance = abs(0.1*target_val)
@@ -18,9 +15,7 @@ skew = 0
 val_min = 1
 val_max = 400
 num_bins = 256
-max_samples = 1000
-
-gpu_nsms = gasp.gpu_nsms - gasp.gpu_nsms % config.gpu.sm_mult
+max_samples = 26*2
 
 values = attrs[:, 1]
 mask = (values >= val_min) & (values <= val_max)
@@ -38,10 +33,10 @@ else:
     desired_pdf = np.exp(-0.5 * z**2) * (1 + np.tanh(skew * z))
     desired_pdf = np.clip(desired_pdf, 1e-12, None)
     desired_pdf *= nonempty.astype(float)
-    desired_pdf += 2*1/num_bins
+    desired_pdf[:] = 2*1/num_bins
     desired_mass = desired_pdf / desired_pdf.sum()
     total_candidates = len(candidates)
-    gpu_multiple, cap = gpu_nsms, max_samples
+    gpu_multiple, cap = gasp.gpu_nsms, max_samples
     target_samples = min(total_candidates - (total_candidates % gpu_multiple),
                         cap - (cap % gpu_multiple),
                         total_candidates)
@@ -71,24 +66,20 @@ else:
         chosen.append(sel)
     sample_idx = np.hstack(chosen) if chosen else np.array([], dtype=int)
 
-    # Ensure final selection is multiple of SMs
-    n = len(sample_idx)
-    n_trim = n - (n % gpu_nsms)
-    if n_trim > 0:
-        selected_idx = np.linspace(0, n-1, n_trim, dtype=int)
-        sample_idx = sample_idx[selected_idx]
-
 if sample_idx.size > 0:
-    # Sort idx into increasing order
+    # Sort indices before loading
     sample_idx = np.sort(sample_idx)
 
-    # Now load only the selected grids
+    # Load only the selected grids and attrs
     sample_grids, _, _ = load_into_array("data/gridstates.hdf5", load_grids=True, indices=sample_idx)
-
     sample_attrs = attrs[sample_idx]
+
+    # Reorder everything consistently by the second column of attrs
     order = np.argsort(sample_attrs[:, 1])
-    sample_idx = sample_idx[order]
+    sample_idx   = sample_idx[order]
     sample_attrs = sample_attrs[order]
+    sample_grids = sample_grids[order]
+
 else:
     sample_grids = []
     sample_attrs = np.empty((0, attrs.shape[1]))
