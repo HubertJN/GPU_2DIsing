@@ -59,11 +59,11 @@ def load_into_array(h5path, load_grids=True, indices=None):
                     bits = np.unpackbits(arr, bitorder='little')[:nbits]
                     grids[i] = (bits.astype(np.int8) * 2 - 1).reshape(L, L)
             else:
-                grids = []
-                for idx in indices:
+                grids = np.empty((len(indices), L, L), dtype=np.int8)
+                for i, idx in enumerate(indices):
                     arr = np.frombuffer(f['grids'][idx], dtype=np.uint8)
                     bits = np.unpackbits(arr, bitorder='little')[:nbits]
-                    grids.append((bits.astype(np.int8) * 2 - 1).reshape(L, L))
+                    grids[i] = (bits.astype(np.int8) * 2 - 1).reshape(L, L)
         else:
             grids = np.empty((0, L, L), dtype=np.int8)
 
@@ -82,8 +82,6 @@ def load_into_array(h5path, load_grids=True, indices=None):
         print(f"Loaded headers and attributes for {len(attrs)} entries.")
     print(f"Elapsed time: {end - start:.2f} s")
     return grids, attrs, headers
-
-
 
 def save_training_grids(outpath, sample_grids, sample_attrs, headers):
     with h5py.File(outpath, "w") as fo:
