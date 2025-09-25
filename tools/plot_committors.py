@@ -12,6 +12,7 @@ committor = attrs[:, 2]
 cluster = attrs[:,1]
 cluster = cluster[~np.isnan(committor)]
 committor = committor[~np.isnan(committor)]
+
 # --- Plot histogram ---
 plt.figure(figsize=(6, 4))
 plt.hist(committor, bins=50, edgecolor="black", alpha=0.7)
