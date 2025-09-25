@@ -5,7 +5,7 @@ from tools.utils import load_into_array, save_training_grids
 import gasp
 
 # Load only headers and attributes first
-grids, attrs, headers = load_into_array("data/gridstates.hdf5", load_grids=True)
+_, attrs, headers = load_into_array("data/gridstates.hdf5", load_grids=False)
 
 target_val = 80
 tolerance = abs(0.1*target_val)
@@ -15,7 +15,7 @@ skew = 0
 val_min = 1
 val_max = 400
 num_bins = 256
-max_samples = 26*2
+max_samples = 140*2
 
 values = attrs[:, 1]
 mask = (values >= val_min) & (values <= val_max)
