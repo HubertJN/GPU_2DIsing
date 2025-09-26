@@ -6,7 +6,7 @@ simulation:
 
 comm:
     nsweeps: 50000
-    ngrids: 4000
+    ngrids: 128
 
 parameters:
     beta: 0.55   # inverse temperature (range: 0.53–0.6)
