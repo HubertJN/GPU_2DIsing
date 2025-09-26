@@ -3,6 +3,7 @@ import h5py
 import matplotlib.pyplot as plt
 from tools.utils import load_into_array, save_training_grids, load_config
 import gasp
+import math
 
 # --- Load config ---
 config = load_config("config.yaml")
@@ -10,7 +11,7 @@ config = load_config("config.yaml")
 # Load only headers and attributes first
 _, attrs, headers = load_into_array("data/gridstates.hdf5", load_grids=False)
 
-target_val = 60
+target_val = 100
 tolerance = abs(0.33*target_val)
 sigma = tolerance
 size_mult = 0.2
@@ -18,8 +19,8 @@ skew = 0
 
 val_min = 1
 val_max = 400
-num_bins = val_max - val_min + 1#128
-max_samples = 5000
+num_bins = 256
+max_samples = 140*6*config.gpu.tasks
 
 gpu_nsms = gasp.gpu_nsms - gasp.gpu_nsms % config.gpu.sm_mult
 
@@ -72,16 +73,12 @@ else:
         chosen.append(sel)
     sample_idx = np.hstack(chosen) if chosen else np.array([], dtype=int)
 
-    # Ensure final selection is multiple of SMs
-    n = len(sample_idx)
-    n_trim = n - (n % gpu_nsms)
-    if n_trim > 0:
-        selected_idx = np.linspace(0, n-1, n_trim, dtype=int)
-        sample_idx = sample_idx[selected_idx]
+    # Compute LCM of gpu_nsms and SLURM tasks
+    divisor = abs(gpu_nsms * config.gpu.tasks) // math.gcd(gpu_nsms, config.gpu.tasks)
 
-    # Ensure final selection is multiple of slurm tasks
+    # Trim sample_idx to be multiple of divisor
     n = len(sample_idx)
-    n_trim = n - (n % config.gpu.tasks)
+    n_trim = n - (n % divisor)
     if n_trim > 0:
         selected_idx = np.linspace(0, n-1, n_trim, dtype=int)
         sample_idx = sample_idx[selected_idx]
