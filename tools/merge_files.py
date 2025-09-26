@@ -16,8 +16,11 @@ for task_id in range(num_tasks):
 # Concatenate along the first axis
 merged_attrs = np.vstack(all_attrs)
 
+print(f"Total attributes to save {len(merged_attrs)}")
+
 # Write back to original training file
 with h5py.File(config.paths.training, "r+") as fo:
     fo["attrs"][:, :] = merged_attrs
 
 print(f"Merged {num_tasks} temporary files into {config.paths.training}")
+
