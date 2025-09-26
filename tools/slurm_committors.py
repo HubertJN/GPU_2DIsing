@@ -49,18 +49,11 @@ with h5py.File(outpath, "w") as fo:
         gridlist = [g.copy() for g in grids[local_start:local_end]]
         attrlist = attrs[local_start:local_end].copy()
 
-        if attrlist[:, 1].min() < 20:
-            mag_output_int = 1
-        elif attrlist[:, 1].min() < 40:
-            mag_output_int = 10
-        else:
-            mag_output_int = config.output.mag_output_int
-
         pBfast = np.array(
             gasp.run_committor_calc(
                 L, ngrids, config.comm.nsweeps, beta, h,
                 grid_output_int=50000,
-                mag_output_int=mag_output_int,
+                mag_output_int=1,
                 grid_input="NumPy",
                 grid_array=gridlist,
                 cv=config.collective_variable.type,
