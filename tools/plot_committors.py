@@ -26,7 +26,7 @@ plt.close()
 
 # --- Plot histogram ---
 plt.figure(figsize=(6, 4))
-plt.scatter(attrs[:, 1], committor)
+plt.scatter(cluster, committor)
 plt.ylabel("Committor Probability (pB)")
 plt.xlabel("Cluster")
 plt.title("Cluster Size against Committor")
