@@ -59,7 +59,7 @@ with h5py.File(outpath, "w") as fo:
         pBfast = np.array(
             gasp.run_committor_calc(
                 L, ngrids, config.comm.nsweeps, beta, h,
-                grid_output_int=config.output.grid_output_int,
+                grid_output_int=50000,
                 mag_output_int=mag_output_int,
                 grid_input="NumPy",
                 grid_array=gridlist,
