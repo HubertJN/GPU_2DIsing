@@ -4,7 +4,7 @@ import os
 from tools.utils import load_config
 
 config = load_config("config.yaml")
-num_tasks = 8  # same as your SLURM array size
+num_tasks = config.gpu.tasks  # same as your SLURM array size
 
 all_attrs = []
 

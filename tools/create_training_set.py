@@ -79,6 +79,13 @@ else:
         selected_idx = np.linspace(0, n-1, n_trim, dtype=int)
         sample_idx = sample_idx[selected_idx]
 
+    # Ensure final selection is multiple of slurm tasks
+    n = len(sample_idx)
+    n_trim = n - (n % config.gpus.tasks)
+    if n_trim > 0:
+        selected_idx = np.linspace(0, n-1, n_trim, dtype=int)
+        sample_idx = sample_idx[selected_idx]
+
 if sample_idx.size > 0:
     # Sort indices before loading
     sample_idx = np.sort(sample_idx)

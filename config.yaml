@@ -36,3 +36,4 @@ analyse:
 
 gpu:
     sm_mult: 4
+    tasks: 8
