@@ -81,7 +81,7 @@ else:
 
     # Ensure final selection is multiple of slurm tasks
     n = len(sample_idx)
-    n_trim = n - (n % config.gpus.tasks)
+    n_trim = n - (n % config.gpu.tasks)
     if n_trim > 0:
         selected_idx = np.linspace(0, n-1, n_trim, dtype=int)
         sample_idx = sample_idx[selected_idx]
