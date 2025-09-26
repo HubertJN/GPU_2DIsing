@@ -9,9 +9,12 @@ grids, attrs, headers = load_into_array(config.paths.training)
 
 # --- Extract committor values ---
 committor = attrs[:, 2]
+committor_error = attrs[:,3]
 cluster = attrs[:,1]
-cluster = cluster[~np.isnan(committor)]
-committor = committor[~np.isnan(committor)]
+idx = ~np.isnan(committor)
+cluster = cluster[idx]
+committor = committor[idx]
+committor_error = committor_error[idx]
 
 # --- Plot histogram ---
 plt.figure(figsize=(6, 4))
@@ -26,7 +29,7 @@ plt.close()
 
 # --- Plot histogram ---
 plt.figure(figsize=(6, 4))
-plt.scatter(cluster, committor)
+plt.errorbar(cluster, committor, yerr=committor_error, ms=2, capsize=2, alpha=0.5, fmt='o', ecolor='gray')
 plt.ylabel("Committor Probability (pB)")
 plt.xlabel("Cluster")
 plt.title("Cluster Size against Committor")
