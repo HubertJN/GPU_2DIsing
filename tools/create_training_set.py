@@ -10,15 +10,16 @@ config = load_config("config.yaml")
 # Load only headers and attributes first
 _, attrs, headers = load_into_array("data/gridstates.hdf5", load_grids=False)
 
-target_val = 80
-tolerance = abs(0.1*target_val)
-sigma = tolerance / 3
+target_val = 60
+tolerance = abs(0.33*target_val)
+sigma = tolerance
+size_mult = 0.2
 skew = 0
 
 val_min = 1
 val_max = 400
-num_bins = 256
-max_samples = 140*2
+num_bins = val_max - val_min + 1#128
+max_samples = 5000
 
 gpu_nsms = gasp.gpu_nsms - gasp.gpu_nsms % config.gpu.sm_mult
 
@@ -35,10 +36,10 @@ else:
     bin_counts, _ = np.histogram(cand_val, bins=bins)
     nonempty = bin_counts > 0
     z = (bin_centers - target_val) / sigma
-    desired_pdf = np.exp(-0.5 * z**2) * (1 + np.tanh(skew * z))
-    desired_pdf = np.clip(desired_pdf, 1e-12, None)
-    desired_pdf *= nonempty.astype(float)
-    desired_pdf += 2*1/num_bins
+    desired_pdf = np.exp(-0.5 * z**2) * (1 + np.tanh(skew * z)) * size_mult
+    #desired_pdf = np.clip(desired_pdf, 1e-12, None)
+    #desired_pdf *= nonempty.astype(float)
+    desired_pdf += 1/num_bins
     desired_mass = desired_pdf / desired_pdf.sum()
     total_candidates = len(candidates)
     gpu_multiple, cap = gpu_nsms, max_samples
