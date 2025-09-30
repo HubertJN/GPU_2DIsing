@@ -1,45 +1,48 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
-from tools.utils import load_config, load_into_array, index
+from tools.utils import load_config, load_into_array
 import h5py
 
-# --- Load config and grids ---
+# --- Load config ---
 config = load_config("config.yaml")
 h5path = config.paths.gridstates
 plot_dir = config.paths.plot_dir
 
-# Load grids
-grids, attrs, _ = load_into_array(h5path, load_grids=True)
+# --- Load attributes only ---
+_, attrs, _ = load_into_array(h5path, load_grids=False)
 
-# Parameters
+# --- Parameters ---
 with h5py.File(h5path, "r") as f:
     ngrids = int(f['ngrids'][()])
-    sweeps = int(f['tot_nsweeps'][()]/100)
-print(ngrids, sweeps)
+    total_sweeps = int(f['tot_nsweeps'][()])
 
+# Choose which grid to animate
 grid_index = 0
-step = 1  # subsample to reduce frames
-selected_sweeps = range(0, sweeps, step)
+step = 10  # subsample for animation
 
-# Get magnetizations for this grid across selected_sweeps
-magnetizations = np.array([attrs[grid_index + sweep * ngrids, 0] 
-                           for sweep in selected_sweeps])
+# Compute all indices corresponding to this grid across sweeps
+all_sweep_indices = np.arange(grid_index, ngrids * total_sweeps, ngrids)
+selected_sweeps = all_sweep_indices[::step]  # subsample
 
-# Find indices where magnetization is within [-0.95, 0.95]
+# --- Filter by magnetization ---
+# Compute magnetization directly from attrs if available
+magnetizations = np.array([np.sum(attrs[i, 0]) / attrs[i, 0].size for i in selected_sweeps])  # or compute from grids after loading
+
+# Optional: select contiguous sweeps where magnetization is within [-0.95, 0.95]
 valid_mask = (magnetizations > -0.95) & (magnetizations < 0.95)
-
-# Find contiguous segment where it’s valid
 if np.any(valid_mask):
-    first_valid = np.argmax(valid_mask)  # first True
-    # last True after first_valid
+    first_valid = np.argmax(valid_mask)
     last_valid = len(valid_mask) - 1 - np.argmax(valid_mask[::-1])
-    valid_sweeps = [s for i, s in enumerate(selected_sweeps) if first_valid <= i <= last_valid]
+    filtered_indices = selected_sweeps[first_valid:last_valid+1]
 else:
-    valid_sweeps = []
+    filtered_indices = []
 
-# Extract the filtered grid evolution
-grid_evolution = np.array([grids[grid_index + sweep * ngrids] for sweep in valid_sweeps])
+# --- Load only the grids we need ---
+if len(filtered_indices) > 0:
+    grid_evolution, _, _ = load_into_array(h5path, load_grids=True, indices=filtered_indices)
+else:
+    grid_evolution = np.empty((0, attrs.shape[1], attrs.shape[1]))  # empty fallback
 
 # Create "bounce" frames (forward then backward)
 frames = np.concatenate([np.arange(len(grid_evolution)),
