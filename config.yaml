@@ -6,11 +6,11 @@ simulation:
 
 comm:
     nsweeps: 50000
-    ngrids: 128
+    ngrids: 4096
 
 parameters:
-    beta: 0.55   # inverse temperature (range: 0.53–0.6)
-    h: 0.082     # external field (range: 0.03–0.1)
+    beta: 0.53   # inverse temperature (range: 0.53–0.6)
+    h: 0.064     # external field (range: 0.03–0.1)
 
 output:
     grid_output_int: 100   # multiple of mag_output_int
@@ -19,11 +19,11 @@ output:
 collective_variable:
     type: "largest_cluster"
     up_threshold: 400.5
-    dn_threshold: 8.5
+    dn_threshold: 9.5
 
 paths:
-    gridstates: "data/gridstates.hdf5"
-    training: "data/gridstates_training.hdf5"
+    gridstates: "data/gridstates_54_064.hdf5"
+    training: "data/gridstates_training_53_064.hdf5"
     plot_dir: "figures"
     save_dir: "data"
 

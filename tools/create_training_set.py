@@ -9,9 +9,9 @@ import math
 config = load_config("config.yaml")
 
 # Load only headers and attributes first
-_, attrs, headers = load_into_array("data/gridstates.hdf5", load_grids=False)
+_, attrs, headers = load_into_array(config.paths.gridstates, load_grids=False)
 
-target_val = 100
+target_val = 110
 tolerance = abs(0.33*target_val)
 sigma = tolerance
 size_mult = 0.2
@@ -88,7 +88,7 @@ if sample_idx.size > 0:
     sample_idx = np.sort(sample_idx)
 
     # Load only the selected grids and attrs
-    sample_grids, _, _ = load_into_array("data/gridstates.hdf5", load_grids=True, indices=sample_idx)
+    sample_grids, _, _ = load_into_array(config.paths.gridstates, load_grids=True, indices=sample_idx)
     sample_attrs = attrs[sample_idx]
 
     # Reorder everything consistently by the second column of attrs
@@ -114,4 +114,4 @@ plt.ylabel("Count")
 plt.savefig("figures/training_samples.pdf")
 plt.close()
 
-save_training_grids("data/gridstates_training.hdf5", sample_grids, sample_attrs, headers)
+save_training_grids(config.paths.training, sample_grids, sample_attrs, headers)

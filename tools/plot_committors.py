@@ -10,6 +10,7 @@ grids, attrs, headers = load_into_array(config.paths.training)
 # --- Extract committor values ---
 committor = attrs[:, 2]
 committor_error = attrs[:,3]
+print(np.median(committor_error))
 cluster = attrs[:,1]
 idx = ~np.isnan(committor)
 cluster = cluster[idx]

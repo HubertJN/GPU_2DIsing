@@ -38,6 +38,9 @@ outpath = os.path.join(config.paths.save_dir, f"attrs_task{task_id}.h5")
 total_rows = len(grids)
 ncols = attrs.shape[1]
 
+print(f"Running {conc_calc} concurrent calculation on {int(ngrids/conc_calc)} grids each")
+exit()
+
 with h5py.File(outpath, "w") as fo:
     dset = fo.create_dataset("attrs", shape=(total_rows, ncols), dtype=attrs.dtype)
 
