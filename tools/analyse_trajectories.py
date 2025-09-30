@@ -47,11 +47,21 @@ else:
     bin_edges = config.analyse.bins  # fixed number of bins
 
 plt.figure(figsize=(8, 6))
-plt.hist(cluster, bins=bin_edges, color='skyblue', edgecolor='black')
+counts, bins, patches = plt.hist(cluster, bins=bin_edges, color='skyblue', edgecolor='black')
+
+# Find bin with largest count
+max_idx = np.argmax(counts)
+max_count = counts[max_idx]
+# Bin center for annotation
+bin_center = (bins[max_idx] + bins[max_idx + 1]) / 2
+
+# Annotate the tallest bar
+plt.text(bin_center, max_count + 1, f'Bin: {int(bin_center)}', 
+         ha='center', va='bottom', color='red', fontsize=12)
 plt.xlabel('Cluster')
 plt.ylabel('Frequency')
 plt.title('Histogram of Cluster Values')
-plt.xlim(cluster_min - 0.5, cluster_max + 0.5)
+plt.xlim(cluster_min - 0.5, 100.5) #cluster_max + 0.5)
 
 plt.tight_layout()
 plt.savefig(f"{plot_dir}/cluster_hist.pdf")
