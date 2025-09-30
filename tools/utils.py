@@ -34,7 +34,7 @@ def magnetisation(grid):
     return np.sum(grid)/len(grid)**2
 
 # Index function
-def index(isnap, igrid):
+def index(isnap, igrid, ngrids):
     grid_idx = isnap*ngrids + igrid
     return grid_idx
        
