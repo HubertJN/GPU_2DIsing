@@ -220,6 +220,17 @@ int create_ising_grids_hdf5(int L, int ngrids, int tot_nsweeps, double h, double
 }
 
 int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep, float *magnetisation, float *lclus_size, char *cv, double dn_thr, double up_thr, char* filename) {
+    /* Setup data output filter based on thresholds*/
+    float *filter = NULL;
+    if (strcmp(cv, "magnetisation") == 0) {
+        filter = magnetisation;
+    } else if (strcmp(cv, "largest_cluster") == 0) {
+        filter = lclus_size;
+    } else {
+        fprintf(stderr, "Error: invalid cv '%s'\n", cv);
+        exit(1);
+    }
+
     //const char *filename = "gridstates.hdf5";
     hid_t file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
     if (file_id < 0) {
@@ -263,29 +274,48 @@ int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep, floa
     H5Sget_simple_extent_dims(as, adims_cur, NULL);
     H5Sclose(as);
 
+    /* Count how many grids pass filter */
+    int nsave = 0;
+    for (int g = 0; g < ngrids; g++) {
+        //printf("%f %f %f \n", dn_thr, filter[g], up_thr);
+        if (filter[g] >= dn_thr && filter[g] <= up_thr)
+            nsave++;
+    }
+
+    if (nsave == 0) {
+        //printf("No grids passed the filter.\n");
+        H5Dclose(d_grids);
+        H5Dclose(d_attrs);
+        H5Dclose(d_tot);
+        H5Pclose(dcpl);
+        H5Fclose(file_id);
+        return 0;
+    } else {
+        //printf("%d grids passed the filter and will be saved.\n", nsave);
+    }
+
+
     /* Extend datasets */
-    hsize_t new_gdims[2] = { start_idx + (hsize_t)ngrids, (hsize_t)nbytes };
+    hsize_t new_gdims[2] = { start_idx + (hsize_t)nsave, (hsize_t)nbytes };
     H5Dset_extent(d_grids, new_gdims);
 
-    hsize_t new_adims[2] = { adims_cur[0] + (hsize_t)ngrids, 4 };
+    hsize_t new_adims[2] = { adims_cur[0] + (hsize_t)nsave, 4 };
     H5Dset_extent(d_attrs, new_adims);
 
     /* Allocate memory buffers */
     unsigned char *buf = (unsigned char *)malloc(nbytes);
     if (!buf) {
         fprintf(stderr, "Error: failed to allocate memory\n");
-        H5Dclose(d_grids);
-        H5Dclose(d_attrs);
-        H5Dclose(d_tot);
-        H5Pclose(dcpl);
-        H5Fclose(file_id);
-        return -1;
+        exit(1);
     }
 
     double attrrow[4];
+    hsize_t write_idx = 0;
 
     /* Write grids and attributes */
     for (int g = 0; g < ngrids; ++g) {
+        if (filter[g] < dn_thr || filter[g] > up_thr) continue;  // skip outside range
+
         memset(buf, 0, nbytes);
         int *grid_ptr = &ising_grids[g * L * L];
         size_t ibit = 0, ibyte = 0;
@@ -296,7 +326,7 @@ int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep, floa
 
         /* Write grids hyperslab */
         hid_t filespace = H5Dget_space(d_grids);
-        hsize_t start[2] = { start_idx + (hsize_t)g, 0 };
+        hsize_t start[2] = { start_idx + write_idx, 0 };
         hsize_t count[2] = { 1, (hsize_t)nbytes };
         H5Sselect_hyperslab(filespace, H5S_SELECT_SET, start, NULL, count, NULL);
         hsize_t mdims[2] = { 1, (hsize_t)nbytes };
@@ -312,7 +342,7 @@ int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep, floa
         attrrow[3] = NAN; /* committor_error placeholder */
 
         hid_t afilespace = H5Dget_space(d_attrs);
-        hsize_t astart[2] = { adims_cur[0] + (hsize_t)g, 0 };
+        hsize_t astart[2] = { adims_cur[0] + write_idx, 0 };
         hsize_t acount[2] = { 1, 4 };
         H5Sselect_hyperslab(afilespace, H5S_SELECT_SET, astart, NULL, acount, NULL);
         hsize_t amdims[2] = { 1, 4 };
@@ -320,10 +350,12 @@ int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep, floa
         H5Dwrite(d_attrs, H5T_NATIVE_DOUBLE, amspace, afilespace, H5P_DEFAULT, attrrow);
         H5Sclose(amspace);
         H5Sclose(afilespace);
+
+        write_idx++;
     }
 
     /* Update total_saved_grids */
-    hsize_t new_total = start_idx + (hsize_t)ngrids;
+    hsize_t new_total = start_idx + (hsize_t)nsave;
     H5Dwrite(d_tot, H5T_NATIVE_HSIZE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &new_total);
 
     free(buf);
@@ -332,6 +364,8 @@ int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep, floa
     H5Dclose(d_tot);
     H5Pclose(dcpl);
     H5Fclose(file_id);
+
+    exit(0);
 
     return 0;
 }
