@@ -28,7 +28,7 @@ NVFLAGS = -O3 -gencode arch=compute_61,code=sm_61 --generate-line-info  -Wno-dep
 .PRECIOUS: $(objdir)/%.obj
 .PHONY:  clean all
 
-all : GPU_2DIsing
+all : gasp
 
 # Create object directory if it does not exist
 $(objdir):
@@ -46,8 +46,8 @@ $(objdir)/%.obj: src/%.c include/%.h | $(objdir)
 $(objdir)/%.obj: src/%.cu include/%.h | $(objdir)
 	$(NVCC) $(NVFLAGS) -c -o $@ $< -Iinclude/ $(HDF5_CFLAGS)
 
-GPU_2DIsing : $(OBJECTS) src/ising.cu | $(objdir) $(bindir)
-	$(LD) -o $(bindir)/GPU_2DIsing $(OBJECTS) src/ising.cu $(NVFLAGS) -Iinclude/ $(HDF5_LIBS)
+gasp : $(OBJECTS) src/ising.cu | $(objdir) $(bindir)
+	$(LD) -o $(bindir)/gasp $(OBJECTS) src/ising.cu $(NVFLAGS) -Iinclude/ $(HDF5_LIBS)
 
 clean :
 	rm -rf $(objdir)
