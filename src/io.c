@@ -365,7 +365,5 @@ int write_ising_grids_hdf5(int L, int ngrids, int *ising_grids, int isweep, floa
     H5Pclose(dcpl);
     H5Fclose(file_id);
 
-    exit(0);
-
     return 0;
 }
