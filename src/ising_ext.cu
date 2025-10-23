@@ -473,7 +473,7 @@ int append_grids_list(int L, int ngrids, int* grid_data, int isweep, float* magn
 char *nuc_docstring = 
 "run_nucleation_swarm(L, ngrid, tot_nsweeps, beta, h, initial_spin=-1, cv='magnetisation', up_threshold=-0.9*initial_spin, \n\
                       dn_threshold=0.95*initial_spin, mag_output_int=100, grid_output_int=1000, keep_grids=True, \n\
-                      max_keep_grids=0, threadsPerBlock=32, gpu_method=0)\n\
+                      max_keep_grids=0, threadsPerBlock=32, gpu_method=0, outname='gridstates.hdf5')\n\
 \n\
 Simulate a swarm of 2D Ising model realisations (grids) to capture nucleation events using GPU acceleration.\n\
 Returns information on fraction of nucleated realisations versus time and populates a module-level list of grid snapshots \n\
@@ -512,6 +512,8 @@ threadsPerBlock : int, optional\n\
     Number of GPU threads (replicas) to launch per gread block (default: 32).\n\
 gpu_method : int, optional\n\
     GPU kernel method to use (default: 0).\n\
+outname : str, optional\n\
+    Name of grid output file (default: 'gridstates.hdf5').\n\
 \n\
 Returns\n\
 -------\n\
@@ -548,17 +550,20 @@ static PyObject* method_run_nucleation_swarm(PyObject* self, PyObject* args, PyO
   int gpu_method = 0;                                // GPU method to use - see mc_gpu.cu
 
   char *cv="magnetisation";                          // Collective variable to use in determining fate
+  char *outname="gridstates.hdf5";                   // Name of output hdf5 file
 
   /* list of keywords */
   static char* kwlist[] = {"L", "ngrid", "tot_nsweeps", "beta", "h",
     "initial_spin", "cv", "up_threshold", "dn_threshold", "mag_output_int",
-    "grid_output_int", "keep_grids", "max_keep_grids", "threadsPerBlock", "gpu_method", NULL};
+    "grid_output_int", "keep_grids", "max_keep_grids", "threadsPerBlock", "gpu_method", 
+    "outname", NULL};
 
   /* Parse the input tuple */
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "iiidd|isddiipiii", kwlist,
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "iiidd|isddiipiiis", kwlist,
                    &L, &ngrids, &tot_nsweeps, &beta, &h, &initial_spin, &cv,
                    &up_threshold, &dn_threshold, &mag_output_int,
-                   &grid_output_int, &keep_grids, &max_keep_grids, &threadsPerBlock, &gpu_method)) {
+                   &grid_output_int, &keep_grids, &max_keep_grids, &threadsPerBlock, &gpu_method,
+                   &outname)) {
     return NULL;
    }
 
@@ -688,7 +693,7 @@ static PyObject* method_run_nucleation_swarm(PyObject* self, PyObject* args, PyO
     mc_gpu_grids_t grids; grids.L = L; grids.ngrids = ngrids; grids.ising_grids = ising_grids;
     grids.d_ising_grids = d_ising_grids; grids.d_neighbour_list = d_neighbour_list;
     mc_sampler_t samples; samples.tot_nsweeps = tot_nsweeps; samples.mag_output_int = mag_output_int; samples.grid_output_int = grid_output_int;
-    mc_function_t calc; calc.initial_spin = initial_spin; calc.cv = cv; calc.itask = 0; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold; calc.ninputs = 1; calc.result = result; calc.filename="gridstates.hdf5";
+    mc_function_t calc; calc.initial_spin = initial_spin; calc.cv = cv; calc.itask = 0; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold; calc.ninputs = 1; calc.result = result; calc.filename=outname;
     gpu_run_t gpu_state; gpu_state.d_state = d_state;  gpu_state.threadsPerBlock = threadsPerBlock; gpu_state.gpu_method = gpu_method;
 
     /* Write stdout output header*/
