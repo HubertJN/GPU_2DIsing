@@ -20,7 +20,13 @@ beta = args.beta if args.beta is not None else config.parameters.beta
 h = args.h if args.h is not None else config.parameters.h
 
 # --- Load only headers and attributes first ---
-_, attrs, headers = load_into_array(config.paths.gridstates, load_grids=False)
+inname = config.paths.gridstates
+outname = config.paths.training
+if args.beta is not None or args.h is not None:
+    inname = f"data/gridstates_{beta:.3f}_{h:.3f}.hdf5"
+    outname = f"data/gridstates_training_{beta:.3f}_{h:.3f}.hdf5"
+
+_, attrs, headers = load_into_array(inname, load_grids=False)
 
 target_val = 110
 tolerance = abs(0.66*target_val)
@@ -94,7 +100,7 @@ else:
 
 if sample_idx.size > 0:
     sample_idx = np.sort(sample_idx)
-    sample_grids, _, _ = load_into_array(config.paths.gridstates, load_grids=True, indices=sample_idx)
+    sample_grids, _, _ = load_into_array(inname, load_grids=True, indices=sample_idx)
     sample_attrs = attrs[sample_idx]
     order = np.argsort(sample_attrs[:, 1])
     sample_idx   = sample_idx[order]
@@ -116,4 +122,4 @@ plt.ylabel("Count")
 plt.savefig("figures/training_samples.pdf")
 plt.close()
 
-save_training_grids(config.paths.training, sample_grids, sample_attrs, headers)
+save_training_grids(outname, sample_grids, sample_attrs, headers)
