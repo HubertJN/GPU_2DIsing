@@ -7,13 +7,6 @@ config = load_config("config.yaml")
 
 grids, attrs, headers = load_into_array(config.paths.training)
 
-#target = 80.0
-#idx = np.argmin(np.abs(attrs[:, 1] - target))
-#grids = np.expand_dims(grids[idx], axis=0)
-#attrs = np.expand_dims(attrs[idx], axis=0)
-
-#print(attrs)
-
 L = headers['L']
 nsweeps = headers['tot_nsweeps']
 beta = headers['beta']
@@ -44,7 +37,8 @@ for start in range(0, len(grids), conc_calc):
             dn_threshold=dn_threshold,
             up_threshold=up_threshold,
             keep_grids=False,
-            nsms=gpu_nsms
+            nsms=gpu_nsms,
+            gpu_method=2
         )
     )
 

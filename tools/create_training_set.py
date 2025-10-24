@@ -12,13 +12,13 @@ config = load_config("config.yaml")
 _, attrs, headers = load_into_array(config.paths.gridstates, load_grids=False)
 
 target_val = 110
-tolerance = abs(0.33*target_val)
+tolerance = abs(0.66*target_val)
 sigma = tolerance
 size_mult = 0.2
 skew = 0
 
 val_min = 1
-val_max = 400
+val_max = 800
 num_bins = 256
 max_samples = 140*6*config.gpu.tasks
 

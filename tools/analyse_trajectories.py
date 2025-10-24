@@ -63,6 +63,17 @@ plt.ylabel('Frequency')
 plt.title('Histogram of Cluster Values')
 plt.xlim(cluster_min - 0.5, 100.5) #cluster_max + 0.5)
 
+cluster_min = config.analyse.cluster_min
+cluster_max = config.analyse.cluster_max
+bins = np.arange(cluster_min - 0.5, cluster_max + 1.5, 1) if config.analyse.bin_per_cluster else config.analyse.bins
+
+counts, bin_edges = np.histogram(cluster, bins=bins)
+max_idx = np.argmax(counts)
+bin_center = (bin_edges[max_idx] + bin_edges[max_idx + 1]) / 2
+
+print(int(bin_center))
+
+
 plt.tight_layout()
 plt.savefig(f"{plot_dir}/cluster_hist.pdf")
 plt.close()
