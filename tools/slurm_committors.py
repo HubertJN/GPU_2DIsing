@@ -18,9 +18,25 @@ config = load_config("config.yaml")
 beta = args.beta if args.beta is not None else config.parameters.beta
 h = args.h if args.h is not None else config.parameters.h
 
+# --- load grid states ---
+grid_path = f"data/gridstates_{beta:.3f}_{h:.3f}.hdf5"
+_, attrs, _ = load_into_array(grid_path)
+cluster = attrs[:, 1]
+
 # --- load dataset (path depends on beta/h) ---
 training_path = f"data/gridstates_training_{beta:.3f}_{h:.3f}.hdf5"
 grids, attrs, headers = load_into_array(training_path)
+
+cluster_min = config.analyse.cluster_min
+cluster_max = config.analyse.cluster_max
+bins = np.arange(cluster_min - 0.5, cluster_max + 1.5, 1) if config.analyse.bin_per_cluster else config.analyse.bins
+
+counts, bin_edges = np.histogram(cluster, bins=bins)
+max_idx = np.argmax(counts)
+bin_center = (bin_edges[max_idx] + bin_edges[max_idx + 1]) / 2
+
+up_threshold = config.collective_variable.up_threshold
+dn_threshold = bin_center - 0.5
 
 L = headers["L"]
 nsweeps = headers["tot_nsweeps"]
@@ -44,19 +60,6 @@ print(f"[Task {task_id}] Processing grids {start_idx}:{end_idx} of {len(grids)}"
 # Slice dataset
 grids = grids[start_idx:end_idx]
 attrs = attrs[start_idx:end_idx]
-
-cluster = attrs[:, 1]
-
-cluster_min = config.analyse.cluster_min
-cluster_max = config.analyse.cluster_max
-bins = np.arange(cluster_min - 0.5, cluster_max + 1.5, 1) if config.analyse.bin_per_cluster else config.analyse.bins
-
-counts, bin_edges = np.histogram(cluster, bins=bins)
-max_idx = np.argmax(counts)
-bin_center = (bin_edges[max_idx] + bin_edges[max_idx + 1]) / 2
-
-up_threshold = config.collective_variable.up_threshold
-dn_threshold = bin_center - 0.5
 
 # --- output path (depends on beta/h) ---
 outpath = os.path.join(
