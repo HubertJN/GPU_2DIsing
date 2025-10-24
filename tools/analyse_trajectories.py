@@ -1,12 +1,23 @@
+import argparse
 import numpy as np
 import h5py
-import re
 import matplotlib.pyplot as plt
 from tools.utils import load_config, load_into_array
 
+# --- parse optional inputs ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--h", type=float, help="External field value")
+parser.add_argument("--beta", type=float, help="Inverse temperature")
+args = parser.parse_args()
+
 # --- Load config ---
 config = load_config("config.yaml")
-h5path = config.paths.gridstates
+
+# --- apply overrides if provided ---
+h = args.h if args.h is not None else config.parameters.h
+beta = args.beta if args.beta is not None else config.parameters.beta
+
+h5path = f"data/gridstates_{beta:.3f}_{h:.3f}.hdf5"
 plot_dir = config.paths.plot_dir
 
 print("Opening:", h5path)
@@ -17,7 +28,6 @@ _, attrs, _ = load_into_array(h5path, load_grids=False)
 mask = (attrs[:, 0] != -1) & (attrs[:, 1] != 0)
 attrs = attrs[mask]
 
-# --- Attributes array ---
 print(f"Processed {attrs.shape[0]} attributes.")
 
 magnetizations = attrs[:, 0]
@@ -33,47 +43,29 @@ plt.xlim(-1, 1)
 xmin, xmax = plt.xlim()
 plt.xticks(np.arange(round(xmin, 1), round(xmax + 0.1, 1), 0.1))
 plt.tight_layout()
-plt.savefig(f"{plot_dir}/magnetization_hist.pdf")
+plt.savefig(f"{plot_dir}/magnetization_hist_{beta:.3f}_{h:.3f}.pdf")
 plt.close()
 
-# --- Cluster histogram with integer-centered bins ---
-cluster_min = config.analyse.cluster_min
-cluster_max = config.analyse.cluster_max
-
-if config.analyse.bin_per_cluster:
-    # Each cluster size gets its own bin, centered on the integer value
-    bin_edges = np.arange(cluster_min - 0.5, cluster_max + 1.5, 1)
-else:
-    bin_edges = config.analyse.bins  # fixed number of bins
-
-plt.figure(figsize=(8, 6))
-counts, bins, patches = plt.hist(cluster, bins=bin_edges, color='skyblue', edgecolor='black')
-
-# Find bin with largest count
-max_idx = np.argmax(counts)
-max_count = counts[max_idx]
-# Bin center for annotation
-bin_center = (bins[max_idx] + bins[max_idx + 1]) / 2
-
-# Annotate the tallest bar
-plt.text(bin_center, max_count + 1, f'Bin: {int(bin_center)}', 
-         ha='center', va='bottom', color='red', fontsize=12)
-plt.xlabel('Cluster')
-plt.ylabel('Frequency')
-plt.title('Histogram of Cluster Values')
-plt.xlim(cluster_min - 0.5, 100.5) #cluster_max + 0.5)
-
+# --- Cluster histogram ---
 cluster_min = config.analyse.cluster_min
 cluster_max = config.analyse.cluster_max
 bins = np.arange(cluster_min - 0.5, cluster_max + 1.5, 1) if config.analyse.bin_per_cluster else config.analyse.bins
 
-counts, bin_edges = np.histogram(cluster, bins=bins)
+plt.figure(figsize=(8, 6))
+counts, bins, _ = plt.hist(cluster, bins=bins, color='skyblue', edgecolor='black')
+
 max_idx = np.argmax(counts)
-bin_center = (bin_edges[max_idx] + bin_edges[max_idx + 1]) / 2
+bin_center = (bins[max_idx] + bins[max_idx + 1]) / 2
+
+plt.text(bin_center, counts[max_idx] + 1, f'Bin: {int(bin_center)}',
+         ha='center', va='bottom', color='red', fontsize=12)
+plt.xlabel('Cluster')
+plt.ylabel('Frequency')
+plt.title('Histogram of Cluster Values')
+plt.xlim(cluster_min - 0.5, 100.5)
 
 print(int(bin_center))
 
-
 plt.tight_layout()
-plt.savefig(f"{plot_dir}/cluster_hist.pdf")
+plt.savefig(f"{plot_dir}/cluster_hist_{beta:.3f}_{h:.3f}.pdf")
 plt.close()
