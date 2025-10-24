@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import h5py
 import matplotlib.pyplot as plt
@@ -5,10 +6,20 @@ from tools.utils import load_into_array, save_training_grids, load_config
 import gasp
 import math
 
+# --- parse optional beta and h inputs ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--beta", type=float, help="Override beta value")
+parser.add_argument("--h", type=float, help="Override h value")
+args = parser.parse_args()
+
 # --- Load config ---
 config = load_config("config.yaml")
 
-# Load only headers and attributes first
+# Apply overrides if provided
+beta = args.beta if args.beta is not None else config.parameters.beta
+h = args.h if args.h is not None else config.parameters.h
+
+# --- Load only headers and attributes first ---
 _, attrs, headers = load_into_array(config.paths.gridstates, load_grids=False)
 
 target_val = 110
@@ -38,8 +49,6 @@ else:
     nonempty = bin_counts > 0
     z = (bin_centers - target_val) / sigma
     desired_pdf = np.exp(-0.5 * z**2) * (1 + np.tanh(skew * z)) * size_mult
-    #desired_pdf = np.clip(desired_pdf, 1e-12, None)
-    #desired_pdf *= nonempty.astype(float)
     desired_pdf += 1/num_bins
     desired_mass = desired_pdf / desired_pdf.sum()
     total_candidates = len(candidates)
@@ -84,19 +93,13 @@ else:
         sample_idx = sample_idx[selected_idx]
 
 if sample_idx.size > 0:
-    # Sort indices before loading
     sample_idx = np.sort(sample_idx)
-
-    # Load only the selected grids and attrs
     sample_grids, _, _ = load_into_array(config.paths.gridstates, load_grids=True, indices=sample_idx)
     sample_attrs = attrs[sample_idx]
-
-    # Reorder everything consistently by the second column of attrs
     order = np.argsort(sample_attrs[:, 1])
     sample_idx   = sample_idx[order]
     sample_attrs = sample_attrs[order]
     sample_grids = sample_grids[order]
-
 else:
     sample_grids = []
     sample_attrs = np.empty((0, attrs.shape[1]))
@@ -105,8 +108,7 @@ print("Selected", len(sample_grids),
       "Percentage of total", int(len(sample_grids) / len(attrs) * 100), "%")
 
 plt.figure(figsize=(6,4))
-plt.hist(values[sample_idx], bins=bins,
-         edgecolor='black', rwidth=0.9, alpha=0.6)
+plt.hist(values[sample_idx], bins=bins, edgecolor='black', rwidth=0.9, alpha=0.6)
 expected_counts = (desired_mass / desired_mass.sum()) * len(sample_idx)
 plt.plot(bin_centers, expected_counts, 'r--', linewidth=2)
 plt.xlabel("Values")
