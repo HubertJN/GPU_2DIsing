@@ -68,7 +68,6 @@ total_rows = len(grids)
 ncols = attrs.shape[1]
 
 print(f"Running {conc_calc} concurrent calculation on {int(ngrids/conc_calc)} grids each")
-exit()
 
 # --- main computation ---
 with h5py.File(outpath, "w") as fo:
