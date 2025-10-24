@@ -10,6 +10,7 @@ import gc
 parser = argparse.ArgumentParser()
 parser.add_argument("--beta", type=float, help="Override beta value")
 parser.add_argument("--h", type=float, help="Override h value")
+parser.add_argument("--dn", type=float, help="Override dn_threshold value")
 args = parser.parse_args()
 
 # --- load config ---
@@ -18,26 +19,10 @@ config = load_config("config.yaml")
 # --- apply overrides if provided ---
 beta = args.beta if args.beta is not None else config.parameters.beta
 h = args.h if args.h is not None else config.parameters.h
-
-# --- load grid states ---
-grid_path = f"data/gridstates_{beta:.3f}_{h:.3f}.hdf5"
-_, attrs, _ = load_into_array(grid_path)
-cluster = attrs[:, 1]
-
-cluster_min = config.analyse.cluster_min
-cluster_max = config.analyse.cluster_max
-bins = np.arange(cluster_min - 0.5, cluster_max + 1.5, 1) if config.analyse.bin_per_cluster else config.analyse.bins
-
-counts, bin_edges = np.histogram(cluster, bins=bins)
-max_idx = np.argmax(counts)
-bin_center = (bin_edges[max_idx] + bin_edges[max_idx + 1]) / 2
+dn = args.dn if args.dn is not None else config.collective_variable.dn_threshold
 
 up_threshold = config.collective_variable.up_threshold
-dn_threshold = bin_center - 0.5
-
-# --- clear arrays ---
-del attrs, cluster
-gc.collect()
+dn_threshold = dn
 
 # --- load dataset (path depends on beta/h) ---
 training_path = f"data/gridstates_training_{beta:.3f}_{h:.3f}.hdf5"
