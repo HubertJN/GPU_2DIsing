@@ -37,7 +37,7 @@ skew = 0
 val_min = 1
 val_max = 800
 num_bins = 256
-max_samples = 140*6*config.gpu.tasks
+max_samples = 140*8*config.gpu.tasks
 
 gpu_nsms = gasp.gpu_nsms - gasp.gpu_nsms % config.gpu.sm_mult
 
