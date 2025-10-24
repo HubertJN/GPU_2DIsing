@@ -5,21 +5,38 @@ import re
 import time
 
 class Dict2Obj:
-  """Recursively turn dict into object with dot notation access."""
-  def __init__(self, d):
-    for k, v in d.items():
-      if isinstance(v, dict):
-        v = Dict2Obj(v)
-      setattr(self, k, v)
-  def __getitem__(self, key):
-    return getattr(self, key)
-  #def __getattr__(self, name):
-  #  return getattr(self, name)
+    """Recursively turn dict into object with dot notation access."""
+    def __init__(self, d):
+        for k, v in d.items():
+            if isinstance(v, dict):
+                v = Dict2Obj(v)
+            setattr(self, k, v)
+    def __getitem__(self, key):
+        return getattr(self, key)
+    def __repr__(self):
+        return str(self.__dict__)
+
+def _format_strings(obj, context):
+    """Recursively format strings with {parameters.*} using context."""
+    if isinstance(obj, dict):
+        return {k: _format_strings(v, context) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_format_strings(v, context) for v in obj]
+    elif isinstance(obj, str) and '{' in obj:
+        try:
+            return obj.format(**context)
+        except Exception:
+            return obj  # leave unformatted if missing
+    return obj
 
 def load_config(path="config.yaml"):
-  with open(path, "r") as f:
-    cfg_dict = yaml.safe_load(f)
-  return Dict2Obj(cfg_dict)
+    with open(path, "r") as f:
+        cfg_dict = yaml.safe_load(f)
+    # Build formatting context
+    context = {"parameters": cfg_dict.get("parameters", {})}
+    # Apply formatting recursively
+    cfg_dict = _format_strings(cfg_dict, context)
+    return Dict2Obj(cfg_dict)
 
 def read_attr(ds, name):
     val = ds.attrs.get(name)
