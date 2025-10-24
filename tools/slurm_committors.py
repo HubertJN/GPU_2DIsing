@@ -4,6 +4,7 @@ import numpy as np
 import h5py
 import gasp
 from tools.utils import load_into_array, load_config
+import gc
 
 # --- parse optional inputs ---
 parser = argparse.ArgumentParser()
@@ -23,10 +24,6 @@ grid_path = f"data/gridstates_{beta:.3f}_{h:.3f}.hdf5"
 _, attrs, _ = load_into_array(grid_path)
 cluster = attrs[:, 1]
 
-# --- load dataset (path depends on beta/h) ---
-training_path = f"data/gridstates_training_{beta:.3f}_{h:.3f}.hdf5"
-grids, attrs, headers = load_into_array(training_path)
-
 cluster_min = config.analyse.cluster_min
 cluster_max = config.analyse.cluster_max
 bins = np.arange(cluster_min - 0.5, cluster_max + 1.5, 1) if config.analyse.bin_per_cluster else config.analyse.bins
@@ -37,6 +34,14 @@ bin_center = (bin_edges[max_idx] + bin_edges[max_idx + 1]) / 2
 
 up_threshold = config.collective_variable.up_threshold
 dn_threshold = bin_center - 0.5
+
+# --- clear arrays ---
+del attrs, cluster
+gc.collect()
+
+# --- load dataset (path depends on beta/h) ---
+training_path = f"data/gridstates_training_{beta:.3f}_{h:.3f}.hdf5"
+grids, attrs, headers = load_into_array(training_path)
 
 L = headers["L"]
 nsweeps = headers["tot_nsweeps"]
