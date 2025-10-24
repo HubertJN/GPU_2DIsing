@@ -32,6 +32,9 @@ conc_calc = min(int(np.round(ngrids / config.comm.ngrids)), gpu_nsms)
 # --- SLURM setup ---
 task_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", 0))
 num_tasks = int(os.environ.get("SLURM_ARRAY_TASK_COUNT", config.gpu.tasks))
+
+task_id = task_id%num_tasks
+
 chunk_size = (len(grids) + num_tasks - 1) // num_tasks
 start_idx = task_id * chunk_size
 end_idx = min((task_id + 1) * chunk_size, len(grids))
