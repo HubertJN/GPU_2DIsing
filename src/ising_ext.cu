@@ -654,7 +654,7 @@ static PyObject* method_run_nucleation_swarm(PyObject* self, PyObject* args, PyO
     /* Pack arguments into structures */
     mc_grids_t grids; grids.L = L; grids.ngrids = ngrids; grids.ising_grids = ising_grids;
     mc_sampler_t samples; samples.tot_nsweeps = tot_nsweeps; samples.mag_output_int = mag_output_int; samples.grid_output_int = grid_output_int;
-    mc_function_t calc; calc.itask = 0; calc.cv = cv; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold; calc.ninputs = 1; calc.result = result; calc.filename="gridstates.hdf5";
+    mc_function_t calc; calc.itask = 0; calc.cv = cv; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold; calc.ninputs = 1; calc.result = result; calc.filename=outname;
 
     /* Write stdout output header*/
 #ifndef PYTHON
@@ -755,7 +755,8 @@ static PyObject* method_run_nucleation_swarm(PyObject* self, PyObject* args, PyO
 char *comm_docstring = 
 "run_committor_calc(L, ngrid, tot_nsweeps, beta, h, initial_spin=-1, cv='magnetisation', up_threshold=-0.9*initial_spin, \n\
                    dn_threshold=0.93*initial_spin, mag_output_int=100, grid_output_int=1000, keep_grids=True, \n\
-                   max_keep_grids=0, threadsPerBlock=32, gpu_method=0, grid_input='gridstates.bin', grid_array=None, nsms=gpu_nsms)\n\
+                   max_keep_grids=0, threadsPerBlock=32, gpu_method=0, grid_input='gridstates.bin', grid_array=None, nsms=gpu_nsms, \n\
+                   outname='pBgrids.hdf5')\n\
 \n\
 Perform a committor calculation on a set of 2D Ising model grid configurations using GPU acceleration.\n\
 The grid configurations can be read from a binary file or passed in as a list of 2D NumPy arrays. The function \n\
@@ -801,6 +802,8 @@ grid_array : list of numpy.ndarray, optional\n\
 nsms : int, optional\n\
     Number of GPU multiprocessors to use. Defaults to the number of available multiprocessors.\n\
 \n\
+outname : str, optional\n\
+    Name of grid output file (default: 'gridstates.hdf5').\n\
 Returns\n\
 -------\n\
 list of tuple\n\
@@ -835,6 +838,7 @@ static PyObject* method_run_committor_calc(PyObject* self, PyObject* args, PyObj
   int gpu_method = 0;                                // GPU method to use - see mc_gpu.cu
 
   char* cv = "magnetisation";                        // Collective variable to use in determining fate
+  char *outname="pBgrids.hdf5";                   // Name of output hdf5 file
 
   const char* grid_input = "gridstates.bin";         // Input file for grids or "NumPy" if passing grid_array
   PyObject* grid_array_obj = NULL;                   // List of NumPy arrays for initial grids
@@ -844,13 +848,13 @@ static PyObject* method_run_committor_calc(PyObject* self, PyObject* args, PyObj
   /* list of keywords */
   static char* kwlist[] = {"L", "ngrid", "tot_nsweeps", "beta", "h",
     "initial_spin", "cv", "up_threshold", "dn_threshold", "mag_output_int",
-    "grid_output_int", "keep_grids", "max_keep_grids", "threadsPerBlock", "gpu_method", "grid_input", "grid_array", "nsms", NULL};
+    "grid_output_int", "keep_grids", "max_keep_grids", "threadsPerBlock", "gpu_method", "grid_input", "grid_array", "nsms", "outname", NULL};
 
   /* Parse the input tuple */ 
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "iiidd|isddiipiiisOi", kwlist,
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "iiidd|isddiipiiisOis", kwlist,
        &L, &ngrids, &tot_nsweeps, &beta, &h, &initial_spin, &cv,
        &up_threshold, &dn_threshold, &mag_output_int,
-       &grid_output_int, &keep_grids, &max_keep_grids, &threadsPerBlock, &gpu_method, &grid_input, &grid_array_obj, &nsms)) {
+       &grid_output_int, &keep_grids, &max_keep_grids, &threadsPerBlock, &gpu_method, &grid_input, &grid_array_obj, &nsms, &outname)) {
     return NULL;
   }
 
@@ -1025,7 +1029,7 @@ static PyObject* method_run_committor_calc(PyObject* self, PyObject* args, PyObj
     mc_grids_t grids; grids.L = L; grids.ngrids = ngrids; grids.ising_grids = ising_grids;
     mc_sampler_t samples; samples.tot_nsweeps = tot_nsweeps; samples.mag_output_int = mag_output_int; samples.grid_output_int = grid_output_int;
     mc_function_t calc; calc.itask = 1; calc.initial_spin = initial_spin; calc.cv = cv; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold;
-    calc.ninputs = grid_array_count; calc.result=result; calc.filename = "pBgrids.hdf5";
+    calc.ninputs = grid_array_count; calc.result=result; calc.filename = outname;
 
     /* Create HDF5 file and write attributes */
     create_ising_grids_hdf5(L, ngrids, tot_nsweeps, h, beta, calc.itask, calc.filename);
@@ -1060,7 +1064,7 @@ static PyObject* method_run_committor_calc(PyObject* self, PyObject* args, PyObj
     grids.d_ising_grids = d_ising_grids; grids.d_neighbour_list = d_neighbour_list;
     mc_sampler_t samples; samples.tot_nsweeps = tot_nsweeps; samples.mag_output_int = mag_output_int; samples.grid_output_int = grid_output_int;
     mc_function_t calc; calc.itask = 1; calc.cv = cv; calc.initial_spin = initial_spin; calc.dn_thr = dn_threshold; calc.up_thr = up_threshold;
-    calc.ninputs = grid_array_count; calc.result=result; calc.filename = "pBgrids.hdf5";
+    calc.ninputs = grid_array_count; calc.result=result; calc.filename = outname;
     gpu_run_t gpu_state; gpu_state.d_state = d_state;  gpu_state.threadsPerBlock = threadsPerBlock; gpu_state.gpu_method = gpu_method;
 
     /* Create HDF5 file and write attributes */
