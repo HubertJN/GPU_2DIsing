@@ -30,13 +30,14 @@ conc_calc = min(int(round(ngrids / config.comm.ngrids)), gpu_nsms)
 
 # --- SLURM setup ---
 task_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", 0))
-num_tasks = int(os.environ.get("SLURM_ARRAY_TASK_COUNT", config.gpu.tasks))
+num_tasks = config.gpu.tasks
+task_id = task_id % num_tasks 
 chunk_size = (len(grids) + num_tasks - 1) // num_tasks
 start_idx = task_id * chunk_size
 end_idx = min((task_id + 1) * chunk_size, len(grids))
 grids = grids[start_idx:end_idx]
 
-outpath = os.path.join(config.paths.save_dir, f"attrs_task{task_id}_{beta:.3f}_{h:.3f}.h5")
+outpath = os.path.join(config.paths.save_dir, f"attrs_task{task_id}_{beta:.3f}_{h:.3f}.hdf5")
 
 print(f"[Task {task_id}] Processing grids {start_idx}:{end_idx} of {len(grids)}")
 print(f"Saving output to {outpath}")
