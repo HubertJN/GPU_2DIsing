@@ -41,25 +41,39 @@ outpath = os.path.join(config.paths.save_dir, f"attrs_task{task_id}_{beta:.3f}_{
 
 print(f"[Task {task_id}] Processing grids {start_idx}:{end_idx} of {len(grids)}")
 print(f"Saving output to {outpath}")
+with h5py.File(outpath, "w") as fo:
+    dset = fo.create_dataset("attrs", shape=(total_rows, ncols), dtype=attrs.dtype)
 
-# --- run committor calculation ---
-for local_start in range(0, len(grids), conc_calc):
-    local_end = min(local_start + conc_calc, len(grids))
-    gridlist = [g.copy() for g in grids[local_start:local_end]]
+    # Process the dataset in batches of size conc_calc
+    offset = 0
+    for local_start in range(0, len(grids), conc_calc):
+        local_end = min(local_start + conc_calc, len(grids))
 
-    gasp.run_committor_calc(
-        L, ngrids, config.comm.nsweeps, beta, h,
-        grid_output_int=50000,
-        mag_output_int=1,
-        grid_input="NumPy",
-        grid_array=gridlist,
-        cv=config.collective_variable.type,
-        dn_threshold=dn_threshold,
-        up_threshold=up_threshold,
-        keep_grids=False,
-        nsms=gpu_nsms,
-        gpu_method=2,
-        outname=outpath
-    )
+        gridlist = [g.copy() for g in grids[local_start:local_end]]
+        attrlist = attrs[local_start:local_end].copy()
 
-print(f"[Task {task_id}] Finished writing to {outpath}")
+        pBfast = np.array(
+            gasp.run_committor_calc(
+                L, ngrids, config.comm.nsweeps, beta, h,
+                grid_output_int=50000,
+                mag_output_int=1,
+                grid_input="NumPy",
+                grid_array=gridlist,
+                cv=config.collective_variable.type,
+                dn_threshold=dn_threshold,
+                up_threshold=up_threshold,
+                keep_grids=False,
+                nsms=gpu_nsms,
+                gpu_method=2
+            )
+        )
+
+        attrlist[:, 2] = pBfast[:, 0]
+        attrlist[:, 3] = pBfast[:, 1]
+
+        # Write batch directly into preallocated dataset
+        batch_size = local_end - local_start
+        dset[offset:offset + batch_size, :] = attrlist
+        offset += batch_size
+
+print(f"[Task {task_id}] Finished writing {total_rows} grids to {outpath}")
