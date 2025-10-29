@@ -24,7 +24,7 @@ all_attrs = []
 for task_id in range(num_tasks):
     temp_file = os.path.join(
         config.paths.save_dir,
-        f"attrs_task{task_id}_{beta:.3f}_{h:.3f}.h5"
+        f"attrs_task{task_id}_{beta:.3f}_{h:.3f}.hdf5"
     )
 
     if not os.path.exists(temp_file):
@@ -39,10 +39,10 @@ if not all_attrs:
     raise RuntimeError("No attribute files found. Check paths and beta/h values.")
 
 merged_attrs = np.vstack(all_attrs)
-print(f"Total attributes to save: {len(merged_attrs)}")
+print(f"Total attributes to save: {merged_attrs.shape[0]}")
 
 # --- update training file (matches beta/h naming convention) ---
-training_path = f"data/gridstates_training_{beta:.2f}_{h:.3f}.hdf5"
+training_path = f"data/gridstates_training_{beta:.3f}_{h:.3f}.hdf5"
 
 with h5py.File(training_path, "r+") as fo:
     if "attrs" not in fo:
