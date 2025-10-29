@@ -7,6 +7,8 @@ from tools.utils import load_into_array, load_config
 config = load_config("config.yaml")
 grids, attrs, headers = load_into_array(config.paths.training)
 
+print(f"Loaded {config.paths.training}")
+
 # --- Extract committor values ---
 committor = attrs[:, 2]
 committor_error = attrs[:,3]
