@@ -1032,8 +1032,9 @@ static PyObject* method_run_committor_calc(PyObject* self, PyObject* args, PyObj
     calc.ninputs = grid_array_count; calc.result=result; calc.filename = outname;
 
     /* Create HDF5 file and write attributes */
-    create_ising_grids_hdf5(L, ngrids, tot_nsweeps, h, beta, calc.itask, calc.filename);
-
+    if ( itask == 0) {
+        create_ising_grids_hdf5(L, ngrids, tot_nsweeps, h, beta, calc.itask, calc.filename);
+    }
     /* Perform the MC simulations calling append_grids_list periodically */
     mc_driver_cpu(grids, beta, h, grid_fate, samples, calc, append_grids_list);
     
